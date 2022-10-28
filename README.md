@@ -73,4 +73,3 @@ Distributed under the MIT License. See `LICENSE` for more information.
 ## Contact
 
 Jerry Gamblin - [@jgamblin](https://twitter.com/jgamblin)
-KennaSecurity - [KennaSecurity](https://twitter.com/jgamblin)
