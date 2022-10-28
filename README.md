@@ -41,7 +41,7 @@ CVElk was built and tested on macOS 13.0 and requires the following software:
 Once the shell script has finished running you can access the [Kibana Dashboard](http://localhost:5601/) at [http://localhost:5601/](http://localhost:5601/) to start exploring the data.
 
 There is an example dashboard included in the install: 
-![Default Dashboard](images/Dashboard.png)
+![Default Dashboard](Images/Dashboard.png)
 
 ## Roadmap
 
