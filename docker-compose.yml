@@ -1,0 +1,49 @@
+name: cvelk
+services:
+  es01:
+    container_name: es01
+    environment:
+      ES_JAVA_OPTS: -Xms512m -Xmx512m
+      bootstrap.memory_lock: "true"
+      cluster.name: docker-cluster
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.4.3
+    networks:
+      elastic: null
+    ports:
+    - mode: ingress
+      target: 9200
+      published: "9200"
+      protocol: tcp
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+    - type: volume
+      source: data01
+      target: /usr/share/elasticsearch/data
+      volume: {}
+  kib01:
+    container_name: kib01
+    environment:
+      ELASTICSEARCH_HOSTS: http://es01:9200
+      ELASTICSEARCH_URL: http://es01:9200
+      xpack.security.enabled: "false"
+    image: docker.elastic.co/kibana/kibana:8.4.3
+    networks:
+      elastic: null
+    ports:
+    - mode: ingress
+      target: 5601
+      published: "5601"
+      protocol: tcp
+networks:
+  elastic:
+    name: cvelk_elastic
+    driver: bridge
+volumes:
+  data01:
+    name: cvelk_data01
+    driver: local
