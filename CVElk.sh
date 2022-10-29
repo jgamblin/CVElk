@@ -1,6 +1,6 @@
 docker image build -t nvdata NVData/
 
-docker-compose up -d
+docker compose up -d
 
 sleep 45
 
