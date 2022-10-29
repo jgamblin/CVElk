@@ -21,7 +21,6 @@ CVElk was built and tested on macOS 13.0 and requires the following software:
   * [Minimum of 4GBs of Ram](https://docs.docker.com/docker-for-mac/)
 * [Docker-Compose](https://docs.docker.com/compose/)
 
-  
 ### Installation
 
 1. Clone the repository
@@ -40,13 +39,12 @@ CVElk was built and tested on macOS 13.0 and requires the following software:
 
 Once the shell script has finished running you can access the [Kibana Dashboard](http://localhost:5601/) at [http://localhost:5601/](http://localhost:5601/) to start exploring the data.
 
-There is an example dashboard included in the install: 
+There is an example dashboard included in the install:
 ![Default Dashboard](Images/Dashboard.png)
 
 ## Roadmap
 
 * Scheduled Data Runs
-* Improve Default Dashboard
 
 ## Data Notes
 
