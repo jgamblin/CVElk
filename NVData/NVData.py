@@ -16,6 +16,7 @@ from zipfile import ZipFile
 import pandas as pd
 import requests
 
+from datetime import datetime
 from elasticsearch import Elasticsearch
 from envyaml import EnvYAML
 from loguru import logger
@@ -25,11 +26,16 @@ env = EnvYAML('config.yml', strict=False)
 logger.remove()
 logger.add(sys.stderr, level=env['logging']['level'])
 
-INDEX = "cve"
-TYPE = "record"
-
 logging.getLogger('matplotlib.font_manager').disabled = True
 warnings.filterwarnings("ignore")
+
+
+def get_nvd_urls() -> list:
+    nvd_urls = []
+    for i in range(2002, datetime.today().year + 1):
+        nvd_urls.append(f"{env['nvd']['feed']}nvdcve-1.1-{i}.json.{env['nvd']['archive_type']}")
+
+    return nvd_urls
 
 
 def download_file_from_internet(download_url, out_dir, proxy_request=False):
@@ -39,7 +45,11 @@ def download_file_from_internet(download_url, out_dir, proxy_request=False):
     else:
         response = requests.get(download_url)
     logger.info(f"Saving {download_url.split('/')[-1]} to {out_dir}")
-    open(out_dir + download_url.split('/')[-1], 'wb').write(response.content)
+    if out_dir == '.':
+        file_path = download_url.split('/')[-1]
+    else:
+        file_path = out_dir + download_url.split('/')[-1]
+    open(file_path, 'wb').write(response.content)
 
 
 def extract_files(directory):
@@ -48,7 +58,10 @@ def extract_files(directory):
     files = [f for f in os.listdir(directory)]
 
     for file in files:
-        file_path = directory + file
+        if directory == '.':
+            file_path = file
+        else:
+            file_path = directory + file
         if file.endswith("zip"):
             logger.info(f"Extracting {file_path}")
             with ZipFile(file_path, 'r') as zip_obj:
@@ -194,9 +207,18 @@ if __name__ == "__main__":
         description="Pull data from NVD and put it into Elastic"
     )
     parser.add_argument('-c', '--cloud', action='store_true', help='Use Elastic Cloud')
-    parser.add_argument('-d', '--download', help='Download NVD database and EPSS to a directory')
-    parser.add_argument('-e', '--extract', help='Extract NVD Zipped files to a directory')
-    parser.add_argument('-p', '--push', help='Process NVD files in a directory and push them to Elasticsearch')
+    parser.add_argument(
+        '-d', '--download', action='store_true',
+        help='Download NVD database and EPSS to the working directory declared in config.yml'
+    )
+    parser.add_argument(
+        '-e', '--extract', action='store_true',
+        help='Extract NVD files in the working directory declared in config.yml'
+    )
+    parser.add_argument(
+        '-p', '--push', action='store_true',
+        help='Process NVD files in the working directory declared in config.yml and push them to Elasticsearch'
+    )
 
     args = parser.parse_args()
 
@@ -212,17 +234,17 @@ if __name__ == "__main__":
         es = Elasticsearch([env['elasticsearch']['host']],)
 
     if args.download:
-        for url in env['nvd']['urls']:
-            download_file_from_internet(download_url=url, out_dir=args.download)
-        download_file_from_internet(download_url=env['epss']['url'], out_dir=args.download)
+        for url in get_nvd_urls():
+            download_file_from_internet(download_url=url, out_dir=env['working_dir'])
+        download_file_from_internet(download_url=env['epss']['url'], out_dir=env['working_dir'])
 
     if args.extract:
-        extract_files(args.extract)
+        extract_files(env['working_dir'])
 
     if args.push:
         # Create a Pandas Dataframe of Data to be Loaded into Elasticsearch
-        data_frame = process_nvd_files(args.push)
-        df = exploit_prediction_scoring_system(data_frame, args.push + "epss_scores-current.csv")
+        data_frame = process_nvd_files(env['working_dir'])
+        df = exploit_prediction_scoring_system(data_frame, env['working_dir'] + "epss_scores-current.csv")
 
         # Replace NaN (null) Values with Zero
         df.fillna(0, inplace=True)

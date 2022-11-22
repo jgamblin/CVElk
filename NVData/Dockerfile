@@ -1,16 +1,15 @@
 FROM python:latest
 
-ADD requirements.txt /
+ADD pyproject.toml /
+ADD poetry.lock /
 ADD NVData.py / 
-ADD urls.txt /
+ADD config.yml.example config.yml
 
 RUN pip install --upgrade pip && \
-    pip install -r requirements.txt
+    pip install poetry &&\
+    poetry export -o requirements.txt &&\
+    pip install --user -r requirements.txt
 
-RUN apt install unzip wget
+RUN python3 NVData.py -d -e
 
-RUN wget -i urls.txt && unzip -o "*.zip" && \
-wget https://epss.cyentia.com/epss_scores-current.csv.gz -O epss_scores-current.csv.gz && gzip -d epss_scores-current.csv.gz 
-
-CMD [ "python", "./NVData.py"]
-
+CMD [ "python", "./NVData.py", "-p"]
