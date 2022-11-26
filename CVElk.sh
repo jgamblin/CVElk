@@ -1,7 +1,7 @@
 set -e
 
-ELASTICSEARCH_HOST='http://192.168.64.6:9200'
-KIBANA_HOST='http://192.168.64.6:5601'
+ELASTICSEARCH_HOST='http://localhost:9200'
+KIBANA_HOST='http://localhost:5601'
 
 echo "Building nvdata docker image"
 docker image build -t nvdata NVData/
