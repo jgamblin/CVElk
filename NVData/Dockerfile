@@ -1,6 +1,7 @@
 FROM python:3.10
 
 ENV CVELK_LOGGING=INFO
+ENV CVELK_DOWNLOAD_DIR=/app/nvd/
 ENV NVD_FEED=https://nvd.nist.gov/feeds/json/cve/1.1/
 ENV EPSS_URL=https://epss.cyentia.com/epss_scores-current.csv.gz
 ENV ELASTICSEARCH_HOST=http://localhost:9200
@@ -12,12 +13,9 @@ ARG ELASTICSEARCH_API_KEY
 RUN mkdir -p /app/nvd/
 WORKDIR /app/
 
+ADD app /app
 ADD pyproject.toml /app
 ADD poetry.lock /app
-ADD nvdata/main.py /app
-ADD nvdata/api.py /app
-ADD nvdata/config.yml.example /app/config.yml
-ADD nvdata/resources /app/resources
 
 RUN pip install --upgrade pip && \
     pip install poetry &&\

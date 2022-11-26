@@ -1,6 +1,6 @@
 logging:
   level: "INFO"
-working_dir: "/app/nvd/"
+download_dir: "/app/nvd/"
 proxies: {'http': '127.0.0.1:8080', 'https': '127.0.0.1:8080'}
 elasticsearch:
   cloud_id: ""

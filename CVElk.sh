@@ -12,6 +12,6 @@ docker-compose up -d
 echo "Waiting 45 seconds ..."
 sleep 45
 
-echo "Running nvdata docker container to populate elasticsearch on $ELASTICSEARCH_HOST"
-echo "Setting up index and dashboard on $KIBANA_HOST"
+echo "Pushing NVD Data to Elasticsearch: $ELASTICSEARCH_HOST"
+echo "Setting up dashboard on Kibana: $KIBANA_HOST"
 docker run -e ELASTICSEARCH_HOST=$ELASTICSEARCH_HOST --rm --network=host --name nvdata nvdata -p -k
