@@ -5,6 +5,9 @@ description = "Pull data from NVD and put it into Elasticsearch"
 authors = ["Your Name <you@example.com>"]
 license = "MIT"
 readme = "README.md"
+packages = [
+    { include = "nvdata" },
+]
 
 [tool.poetry.dependencies]
 python = "^3.10"

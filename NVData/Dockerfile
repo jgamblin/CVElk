@@ -1,15 +1,29 @@
-FROM python:latest
+FROM python:3.10
 
-ADD pyproject.toml /
-ADD poetry.lock /
-ADD NVData.py / 
-ADD config.yml.example config.yml
+ENV CVELK_LOGGING=INFO
+ENV NVD_FEED=https://nvd.nist.gov/feeds/json/cve/1.1/
+ENV EPSS_URL=https://epss.cyentia.com/epss_scores-current.csv.gz
+ENV ELASTICSEARCH_HOST=http://localhost:9200
+ENV KIBANA_HOST=http://localhost:5601
+ARG ELASTICSEARCH_CLOUD_ID
+ARG ELASTICSEARCH_API_ID
+ARG ELASTICSEARCH_API_KEY
+
+RUN mkdir -p /app/nvd/
+WORKDIR /app/
+
+ADD pyproject.toml /app
+ADD poetry.lock /app
+ADD nvdata/main.py /app
+ADD nvdata/api.py /app
+ADD nvdata/config.yml.example /app/config.yml
+ADD nvdata/resources /app/resources
 
 RUN pip install --upgrade pip && \
     pip install poetry &&\
     poetry export -o requirements.txt &&\
     pip install --user -r requirements.txt
 
-RUN python3 NVData.py -d -e
+RUN python3 main.py -d -e
 
-CMD [ "python", "./NVData.py", "-p"]
+ENTRYPOINT [ "python", "main.py"]

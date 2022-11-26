@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 import argparse
 import eland as ed
 import glob
@@ -7,8 +5,8 @@ import gzip
 import json
 import logging
 import os
-import warnings
 import sys
+import warnings
 
 from re import sub
 from zipfile import ZipFile
@@ -22,18 +20,26 @@ from envyaml import EnvYAML
 from loguru import logger
 
 
-env = EnvYAML('config.yml', strict=False)
+from api import KibanaAPI
+
+env = EnvYAML(str('config.yml'), strict=False)
 logger.remove()
-logger.add(sys.stderr, level=env['logging']['level'])
+if os.environ.get('CVELK_LOGGING'):
+    logging_level = os.environ.get('CVELK_LOGGING')
+else:
+    logging_level = env['logging']['level']
+logger.add(sys.stderr, level=logging_level)
+logger.info(f"Logging level set to {logging_level}")
+
 
 logging.getLogger('matplotlib.font_manager').disabled = True
 warnings.filterwarnings("ignore")
 
 
-def get_nvd_urls() -> list:
+def get_nvd_urls(nvd_feed: str) -> list:
     nvd_urls = []
     for i in range(2002, datetime.today().year + 1):
-        nvd_urls.append(f"{env['nvd']['feed']}nvdcve-1.1-{i}.json.{env['nvd']['archive_type']}")
+        nvd_urls.append(f"{nvd_feed}nvdcve-1.1-{i}.json.{env['nvd']['archive_type']}")
 
     return nvd_urls
 
@@ -53,7 +59,7 @@ def download_file_from_internet(download_url, out_dir, proxy_request=False):
 
 
 def extract_files(directory):
-    logger.info(f"Extracting NVD zip files to {directory}")
+    logger.info(f"Extracting NVD archive files to {directory}")
 
     files = [f for f in os.listdir(directory)]
 
@@ -62,6 +68,7 @@ def extract_files(directory):
             file_path = file
         else:
             file_path = directory + file
+
         if file.endswith("zip"):
             logger.info(f"Extracting {file_path}")
             with ZipFile(file_path, 'r') as zip_obj:
@@ -71,6 +78,8 @@ def extract_files(directory):
             with gzip.open(file_path, 'rb') as gz_file:
                 with open(file_path.replace('.gz', ''), 'wb') as output_file:
                     output_file.write(gz_file.read())
+            logger.info(f"File {file_path} extracted, cleaning up...")
+            os.remove(file_path)
 
 
 def process_nvd_files(directory) -> pd.DataFrame:
@@ -200,6 +209,59 @@ def camel_case_string(string):
     return string
 
 
+def get_elasticsearch(cloud: bool):
+
+    if cloud:
+        if os.environ.get('ELASTICSEARCH_CLOUD_ID'):
+            es_cloud_id = os.environ.get('ELASTICSEARCH_CLOUD_ID')
+            logger.info(f"Using environment variable for Elastic Cloud ID {es_cloud_id}")
+        else:
+            es_cloud_id = env['elasticsearch']['cloud_id']
+            logger.info(f"Using config file for Elastic Cloud ID {es_cloud_id}")
+        if os.environ.get('ELASTICSEARCH_API_ID'):
+            es_cloud_api_id = os.environ.get('ELASTICSEARCH_API_ID')
+            logger.info(f"Using environment variable for Elastic Cloud API ID")
+        else:
+            es_cloud_api_id = env['elasticsearch']['api_id']
+            logger.info(f"Using config file for Elastic Cloud API ID")
+        if os.environ.get('ELASTICSEARCH_API_KEY'):
+            es_cloud_api_key = os.environ.get('ELASTICSEARCH_API_KEY')
+            logger.info(f"Using environment variable for Elastic Cloud API Key")
+        else:
+            es_cloud_api_key = env['elasticsearch']['api_key']
+            logger.info(f"Using config file for Elastic Cloud API Key")
+
+        if es_cloud_id and es_cloud_api_id and es_cloud_api_key:
+            logger.info(f"Setting up connection to Elastic Cloud {es_cloud_id}")
+            elasticsearch = Elasticsearch(
+                cloud_id=es_cloud_id,
+                api_key=(es_cloud_api_id, es_cloud_api_key)
+            )
+        else:
+            logger.error(f"Not all variables for cloud connection not set")
+            exit(1)
+
+    else:
+        if os.environ.get('ELASTICSEARCH_HOST'):
+            es_host = os.environ.get('ELASTICSEARCH_HOST')
+            logger.info(f"Using environment variable for Elasticsearch host {es_host}")
+        else:
+            es_host = env['elasticsearch']['host']
+            logger.info(f"Using config file for Elasticsearch host {es_host}")
+
+        logger.info(f"Setting up connection to Elasticsearch instance {es_host}")
+        elasticsearch = Elasticsearch([es_host],)
+
+    logger.info("Checking connection to Elasticsearch")
+    if not elasticsearch.ping():
+        logger.error(f"Connection failed")
+        exit(1)
+    else:
+        logger.info("Connection successful")
+
+    return elasticsearch
+
+
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(
@@ -219,29 +281,38 @@ if __name__ == "__main__":
         '-p', '--push', action='store_true',
         help='Process NVD files in the working directory declared in config.yml and push them to Elasticsearch'
     )
+    parser.add_argument(
+        '-k', '--kibana', action='store_true',
+        help='Configure Kibana with the CVE index, dashboard and setting dark theme'
+    )
 
     args = parser.parse_args()
 
-    # Setup Connection to Elasticsearch
-    if args.cloud:
-        logger.info("Connecting to Elastic Cloud")
-        es = Elasticsearch(
-            cloud_id=env['elasticsearch']['cloud_id'],
-            api_key=(env['elasticsearch']['api_id'], env['elasticsearch']['api_key'])
-        )
-    else:
-        logger.info(f"Connecting to Elastic instance {env['elasticsearch']['host']}")
-        es = Elasticsearch([env['elasticsearch']['host']],)
-
     if args.download:
-        for url in get_nvd_urls():
+        # Set variables, if they are set as env variables use them if not resort to the values in the config.yml
+        if os.environ.get('NVD_FEED'):
+            the_nvd_feed = os.environ.get('NVD_FEED')
+            logger.info(f"Using environment variable for NVD Feed {the_nvd_feed}")
+        else:
+            the_nvd_feed = env['nvd']['feed']
+            logger.info(f"Using config file for NVD Feed {the_nvd_feed}")
+        if os.environ.get('EPSS_URL'):
+            the_epss_url = os.environ.get('EPSS_URL')
+            logger.info(f"Using environment variable for EPSS URL {the_epss_url}")
+        else:
+            the_epss_url = env['epss']['url']
+            logger.info(f"Using config file for EPSS URL {the_epss_url}")
+
+        for url in get_nvd_urls(the_nvd_feed):
             download_file_from_internet(download_url=url, out_dir=env['working_dir'])
-        download_file_from_internet(download_url=env['epss']['url'], out_dir=env['working_dir'])
+        download_file_from_internet(download_url=the_epss_url, out_dir=env['working_dir'])
 
     if args.extract:
         extract_files(env['working_dir'])
 
     if args.push:
+        es = get_elasticsearch(args.cloud)
+
         # Create a Pandas Dataframe of Data to be Loaded into Elasticsearch
         data_frame = process_nvd_files(env['working_dir'])
         df = exploit_prediction_scoring_system(data_frame, env['working_dir'] + "epss_scores-current.csv")
@@ -252,7 +323,6 @@ if __name__ == "__main__":
         df.columns = [camel_case_string(x) for x in df.columns]
 
         logger.info("Uploading data to Elasticsearch")
-
         # Save the Data into Elasticsearch
         df = ed.pandas_to_eland(
             pd_df=df,
@@ -261,3 +331,18 @@ if __name__ == "__main__":
             es_if_exists="replace",
             es_refresh=True,
         )
+
+    if args.kibana:
+        if os.environ.get('KIBANA_HOST'):
+            kibana_host = os.environ.get('KIBANA_HOST')
+            logger.info(f"Using environment variable for Kibana host {kibana_host}")
+        else:
+            kibana_host = env['kibana']['host']
+            logger.info(f"Using config file for Kibana host {kibana_host}")
+
+        kb = KibanaAPI(url=kibana_host)
+
+        kb.set_theme()
+        dashboard = kb.create_dashboard()
+        dash_url = kibana_host + "/app/dashboards#/view/" + dashboard.json().get('successResults')[1].get('destinationId')
+        logger.info(f"Done visit {dash_url} to view the dashboard")

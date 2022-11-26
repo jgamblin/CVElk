@@ -1,25 +1,8 @@
 ## Usage
 
-NVData.py can be used standalone to get data into Elastic Cloud
+## Elastic Cloud Set up
 
-```bash
-# Install Poetry https://python-poetry.org/docs/
-curl -sSL https://install.python-poetry.org | python3 -
-# Create a virtual environment
-poetry shell
-# Install the dependencies 
-poetry install
-# Rename config.yml.example to config.yml
-# Populate it with required fields
-# Download the NVD catalog, extract the files and push them to a cloud instance
-python3 NVData.py -c -d -e -p
-# Alternatively push it to a local Elasticseach instance
-python3 NVData.py -d -e -p
-```
-
-## Elastic Cloud Set up 
-
-Generate and API key to push the data to cloud 
+Generate and API key to push the data to cloud
 
 Cloud -> Deployments -> <DEPLOYMENT-NAME> -> Elasticsearch -> API console
 
@@ -39,3 +22,23 @@ Cloud -> Deployments -> <DEPLOYMENT-NAME> -> Elasticsearch -> API console
  }
 }
 ```
+
+## Running the tool standalone
+
+```bash
+# Install Poetry https://python-poetry.org/docs/
+curl -sSL https://install.python-poetry.org | python3 -
+# Make sure you're in the right directory
+cd CVElk/NVData/nvdata
+# Create a virtual environment
+poetry shell
+# Install the dependencies 
+poetry install
+# Rename config.yml.example to config.yml
+# Populate it with required fields
+# Download the NVD catalog, extract the files and push them to a cloud instance
+python3 NVData.py -c -d -e -p
+# Alternatively push it to a local Elasticseach instance (-k will set kibana to dark theme and setup the index and dashboard)
+python3 NVData.py -d -e -p -k
+```
+
