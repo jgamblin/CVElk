@@ -34,7 +34,7 @@ cd CVElk/NVData/nvdata
 poetry shell
 # Install the dependencies 
 poetry install
-# Rename config.yml.example to config.yml
+# Rename config.example.yml to config.yml
 # Populate it with required fields
 # Download the NVD catalog, extract the files and push them to a cloud instance
 python3 NVData.py -c -d -e -p
