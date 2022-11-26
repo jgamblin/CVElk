@@ -1,4 +1,4 @@
-## Running application standalone
+# Running application standalone
 
 ## Elastic Cloud Setup
 
