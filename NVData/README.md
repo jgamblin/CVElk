@@ -1,5 +1,3 @@
-# Running application standalone
-
 ## Elastic Cloud Setup
 
 Generate and API key to push the data to cloud
@@ -25,7 +23,7 @@ Cloud -> Deployments -> <DEPLOYMENT-NAME> -> Elasticsearch -> API console
 
 ## Installing and running
 
-You can either run using Python or use the docker image
+You can either run using Python or use the docker container.
 
 ### Using Docker
 
