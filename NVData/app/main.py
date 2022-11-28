@@ -168,8 +168,11 @@ def camel_case_string(string):
 def get_elasticsearch(cloud: bool):
 
     if cloud:
+        logger.info("ES Cloud ID being set")
         es_cloud_id = util.set_variable(os.environ.get('ELASTICSEARCH_CLOUD_ID'), env['elasticsearch']['cloud_id'])
+        logger.info("ES Cloud API ID being set")
         es_cloud_api_id = util.set_variable(os.environ.get('ELASTICSEARCH_API_ID'), env['elasticsearch']['api_id'])
+        logger.info("ES Cloud API Key being set")
         es_cloud_api_key = util.set_variable(os.environ.get('ELASTICSEARCH_API_KEY'), env['elasticsearch']['api_key'])
 
         if es_cloud_id and es_cloud_api_id and es_cloud_api_key:
@@ -183,6 +186,7 @@ def get_elasticsearch(cloud: bool):
             exit(1)
 
     else:
+        logger.info("ES Host URL being set")
         es_host = util.set_variable(os.environ.get('ELASTICSEARCH_HOST'), env['elasticsearch']['host'])
         logger.info(f"Connection URL for Elasticsearch: {es_host}")
         elasticsearch = Elasticsearch([es_host],)
@@ -260,6 +264,7 @@ if __name__ == "__main__":
             es_if_exists="replace",
             es_refresh=True,
         )
+        logger.info("Successfully uploaded data to Elasticsearch")
 
     if args.kibana:
         kibana_host = util.set_variable(os.environ.get('KIBANA_HOST'), env['kibana']['host'])

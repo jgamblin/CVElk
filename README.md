@@ -44,6 +44,10 @@ at [http://localhost:5601/](http://localhost:5601/) to start exploring the data.
 There is an example dashboard included in the install:
 ![Default Dashboard](Images/Dashboard.png)
 
+### Elastic Cloud
+
+Instead of running locally you can push to [Elastic Cloud](NVData/README.md) 
+
 ## Roadmap
 
 * Scheduled Data Runs

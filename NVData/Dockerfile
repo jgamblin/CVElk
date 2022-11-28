@@ -6,9 +6,6 @@ ENV NVD_FEED=https://nvd.nist.gov/feeds/json/cve/1.1/
 ENV EPSS_URL=https://epss.cyentia.com/epss_scores-current.csv.gz
 ENV ELASTICSEARCH_HOST=http://localhost:9200
 ENV KIBANA_HOST=http://localhost:5601
-ARG ELASTICSEARCH_CLOUD_ID
-ARG ELASTICSEARCH_API_ID
-ARG ELASTICSEARCH_API_KEY
 
 RUN mkdir -p /app/nvd/
 WORKDIR /app/
