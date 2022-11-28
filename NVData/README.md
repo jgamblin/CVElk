@@ -1,8 +1,10 @@
 ## Elastic Cloud Setup
 
-Generate and API key to push the data to cloud
-
-Cloud -> Deployments -> <DEPLOYMENT-NAME> -> Elasticsearch -> API console
+1) Get your Elastic Cloud ID from [https://cloud.elastic.co/](https://cloud.elastic.co/)
+   1) Home -> Settings Wheel beside deployment name -> Cloud ID
+2) Generate an Elastic Cloud API Key through the API console (use the template JSON below)
+   1) Cloud -> Deployments -> <DEPLOYMENT-NAME> -> Elasticsearch -> API console
+   2) Take note of the API ID and API Key
 
 ```JSON
 {
