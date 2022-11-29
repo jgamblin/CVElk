@@ -1,16 +1,24 @@
-FROM python:latest
+FROM python:3.10
 
-ADD requirements.txt /
-ADD NVData.py / 
-ADD urls.txt /
+ENV CVELK_LOGGING=INFO
+ENV CVELK_DOWNLOAD_DIR=/app/nvd/
+ENV NVD_FEED=https://nvd.nist.gov/feeds/json/cve/1.1/
+ENV EPSS_URL=https://epss.cyentia.com/epss_scores-current.csv.gz
+ENV ELASTICSEARCH_HOST=http://localhost:9200
+ENV KIBANA_HOST=http://localhost:5601
+
+RUN mkdir -p /app/nvd/
+WORKDIR /app/
+
+ADD app /app
+ADD pyproject.toml /app
+ADD poetry.lock /app
 
 RUN pip install --upgrade pip && \
-    pip install -r requirements.txt
+    pip install poetry &&\
+    poetry export -o requirements.txt &&\
+    pip install --user -r requirements.txt
 
-RUN apt install unzip wget
+RUN python3 main.py -d -e
 
-RUN wget -i urls.txt && unzip -o "*.zip" && \
-wget https://epss.cyentia.com/epss_scores-current.csv.gz -O epss_scores-current.csv.gz && gzip -d epss_scores-current.csv.gz 
-
-CMD [ "python", "./NVData.py"]
-
+ENTRYPOINT [ "python", "main.py"]

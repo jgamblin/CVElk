@@ -1,0 +1,16 @@
+logging:
+  level: "INFO"
+download_dir: "/app/nvd/"
+proxies: {'http': '127.0.0.1:8080', 'https': '127.0.0.1:8080'}
+elasticsearch:
+  cloud_id: ""
+  api_id: ""
+  api_key: ""
+  host: "http://localhost:9200"
+kibana:
+  host: "http://localhost:5601"
+nvd:
+  feed: "https://nvd.nist.gov/feeds/json/cve/1.1/"
+  archive_type: "gz"
+epss:
+  url: "https://epss.cyentia.com/epss_scores-current.csv.gz"

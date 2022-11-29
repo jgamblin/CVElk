@@ -2,7 +2,8 @@
 
 ## About The Project
 
-CVElk allows you to build a local [Elastic Stack](https://www.elastic.co/elastic-stack/) quickly using docker-compose and import data directly from [NVD](https://nvd.nist.gov/) and [EPSS](https://www.first.org/epss/).
+CVElk allows you to build a local [Elastic Stack](https://www.elastic.co/elastic-stack/) quickly using docker-compose 
+and import data directly from [NVD](https://nvd.nist.gov/) and [EPSS](https://www.first.org/epss/).
 
 ### Built With
 
@@ -18,7 +19,7 @@ CVElk allows you to build a local [Elastic Stack](https://www.elastic.co/elastic
 CVElk was built and tested on macOS 13.0 and requires the following software:
 
 * [Docker](https://docs.docker.com/docker-for-mac/install/)
-  * [Minimum of 4GBs of Ram](https://docs.docker.com/docker-for-mac/)
+* [Minimum of 4GBs of Ram](https://docs.docker.com/docker-for-mac/)
 * [Docker-Compose](https://docs.docker.com/compose/)
 
 ### Installation
@@ -37,10 +38,15 @@ CVElk was built and tested on macOS 13.0 and requires the following software:
 
 ### Kibana Access
 
-Once the shell script has finished running you can access the [Kibana Dashboard](http://localhost:5601/) at [http://localhost:5601/](http://localhost:5601/) to start exploring the data.
+Once the shell script has finished running you can access the [Kibana Dashboard](http://localhost:5601/) 
+at [http://localhost:5601/](http://localhost:5601/) to start exploring the data.
 
 There is an example dashboard included in the install:
 ![Default Dashboard](Images/Dashboard.png)
+
+### Elastic Cloud
+
+Instead of running locally you can push to [Elastic Cloud](NVData/README.md) 
 
 ## Roadmap
 
@@ -48,11 +54,13 @@ There is an example dashboard included in the install:
 
 ## Data Notes
 
-Depending on your internet speed and the amount of data requested, startup can take 10 minutes to more than an hour. By Default:
+Depending on your internet speed and the amount of data requested, startup can take 10 minutes to more than an hour. 
+By Default:
 
 ## Contributing
 
-Contributions are what make the open source community such an amazing place to be learn, inspire, and create. Any contributions you make are **greatly appreciated**.
+Contributions are what make the open source community such an amazing place to be learn, inspire, and create. Any 
+contributions you make are **greatly appreciated**.
 
 1. Fork the Project
 2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
