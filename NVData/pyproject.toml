@@ -15,7 +15,7 @@ pandas = "1.5.1"
 elasticsearch = "8.5.0"
 eland = "8.3.0"
 envyaml = "^1.10.211231"
-requests = "^2.28.1"
+requests = "^2.31.0"
 loguru = "^0.6.0"
 
 
