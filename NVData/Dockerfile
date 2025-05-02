@@ -3,7 +3,7 @@ FROM python:3.10
 ENV CVELK_LOGGING=INFO
 ENV CVELK_DOWNLOAD_DIR=/app/nvd/
 ENV NVD_FEED=https://nvd.nist.gov/feeds/json/cve/1.1/
-ENV EPSS_URL=https://epss.cyentia.com/epss_scores-current.csv.gz
+ENV EPSS_URL=https://epss.empiricalsecurity.com/epss_scores-current.csv.gz
 ENV ELASTICSEARCH_HOST=http://localhost:9200
 ENV KIBANA_HOST=http://localhost:5601
 
