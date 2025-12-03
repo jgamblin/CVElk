@@ -1,0 +1,61 @@
+# CVElk Development Docker Compose
+# Simplified setup without TLS for local development
+# Using Elasticsearch 8.x for stable visualization APIs
+
+name: cvelk-dev
+
+services:
+  # Elasticsearch 8.x - development mode (no security)
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.17.0
+    container_name: cvelk-es-dev
+    environment:
+      - node.name=es01
+      - cluster.name=cvelk-dev
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - esdata-dev:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+    networks:
+      - elastic-dev
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -q status"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  # Kibana 8.x - development mode
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.17.0
+    container_name: cvelk-kb-dev
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - xpack.security.enabled=false
+    ports:
+      - "5601:5601"
+    networks:
+      - elastic-dev
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -I http://localhost:5601 | grep -q 'HTTP/1.1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+networks:
+  elastic-dev:
+    driver: bridge
+
+volumes:
+  esdata-dev:
+    driver: local
