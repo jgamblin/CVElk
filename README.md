@@ -1,98 +1,127 @@
 # CVElk - Vulnerability Intelligence Platform
 
-[![CI](https://github.com/jgamblin/CVElk/actions/workflows/ci.yml/badge.svg)](https://github.com/jgamblin/CVElk/actions/workflows/ci.yml)
-[![Security](https://github.com/jgamblin/CVElk/actions/workflows/security.yml/badge.svg)](https://github.com/jgamblin/CVElk/actions/workflows/security.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Elasticsearch 8.17](https://img.shields.io/badge/Elasticsearch-8.17-005571.svg)](https://www.elastic.co/)
 
-A world-class vulnerability intelligence platform that imports CVE data from **NVD**, **EPSS**, and **CISA KEV** into Elasticsearch for analysis and visualization with Kibana.
+A modern vulnerability intelligence platform that aggregates CVE data from multiple authoritative sources into Elasticsearch with a beautiful Kibana dashboard. **Auto-updates every 15 minutes** to keep your data fresh.
 
 ![CVElk Dashboard](Images/Dashboard.png)
 
 ## ✨ Features
 
-- **NVD 2.0 API Integration** - Fetch CVE data from the latest NVD API with automatic pagination and rate limiting
-- **EPSS Scoring** - Enrich CVEs with Exploit Prediction Scoring System probabilities
-- **CISA KEV Catalog** - Flag vulnerabilities known to be actively exploited
-- **Elasticsearch + Kibana** - Powerful search, analysis, and visualization
-- **Modern CLI** - Beautiful command-line interface with rich output
-- **Docker Ready** - One-command deployment with security enabled
-- **Async & Fast** - Built with modern Python async patterns
+- **300,000+ CVEs** indexed from multiple authoritative sources
+- **Auto-Updating** - Watch mode syncs every 15 minutes automatically
+- **16-Panel Kibana Dashboard** with real-time vulnerability intelligence
+- **4 Data Sources** - CVE List V5, NVD, EPSS, and CISA KEV
+- **Simple Setup** - 4 commands to get running
+- **Modern Python CLI** - Beautiful interface with rich output
 
 ## 🚀 Quick Start
 
-### Option 1: Docker (Recommended)
-
 ```bash
-# Clone the repository
-git clone https://github.com/jgamblin/CVElk.git
-cd CVElk
+# 1. Start Elasticsearch and Kibana
+docker compose up -d
 
-# Copy and configure environment variables
-cp docker/.env.example docker/.env
-# Edit docker/.env with your settings (especially passwords!)
+# 2. Sync CVE data (this takes a while - 300K+ CVEs)
+python -m cvelk sync
 
-# Start Elasticsearch and Kibana (secure mode)
-cd docker && docker compose up -d
+# 3. Setup the dashboard
+python -m cvelk setup
 
-# Wait for services to be healthy (~60 seconds)
-docker compose logs -f
-
-# Run CVElk to sync data
-docker run --rm --network host \
-  -e ELASTICSEARCH_HOST=https://localhost:9200 \
-  -e ELASTICSEARCH_PASSWORD=your-password \
-  ghcr.io/jgamblin/cvelk:latest sync --days 30
+# 4. Open the dashboard
+open http://localhost:5601/app/dashboards#/view/cvelk-main-dashboard
 ```
 
-### Option 2: Development Mode (No Security)
+### 🔄 Auto-Update Mode
+
+Keep your CVE data fresh with automatic updates:
 
 ```bash
-# Start Elasticsearch and Kibana without security
-cd docker && docker compose -f docker-compose.dev.yml up -d
+# Start watching for updates (every 15 minutes)
+cvelk watch
 
-# Install CVElk
-pip install -e ".[dev]"
+# Custom interval (every 5 minutes)
+cvelk watch --interval 5
 
-# Sync recent CVEs
-cvelk sync --days 7
-
-# Set up Kibana dashboard
-cvelk setup
+# Include NVD enrichment (slower but more complete)
+cvelk watch --no-skip-nvd
 ```
 
-### Option 3: pip Install
+The watch mode runs continuously, pulling the latest CVE data from all sources.
+
+## 📊 Data Sources
+
+CVElk aggregates vulnerability data from four authoritative sources:
+
+| Source | Description | Records | Update Frequency |
+|--------|-------------|---------|------------------|
+| [CVE List V5](https://github.com/CVEProject/cvelistV5) | Official CVE Project repository - primary source for CVE records | ~300,000 CVEs | **Every 7 minutes** |
+| [NVD](https://nvd.nist.gov/) | NIST National Vulnerability Database - CVSS scores, CWEs, references | ~320,000 CVEs | Real-time API |
+| [EPSS](https://www.first.org/epss/) | Exploit Prediction Scoring System - probability of exploitation | ~300,000 scores | **Daily** |
+| [CISA KEV](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) | Known Exploited Vulnerabilities - actively exploited CVEs | ~1,500 CVEs | As needed |
+
+> **Note**: The CVE List V5 is the authoritative source maintained by the CVE Project and updates every 7 minutes. CVElk's `watch` command syncs every 15 minutes by default to capture all updates.
+
+### Data Enrichment
+
+Each CVE record is enriched with:
+
+- **CVSS Scores** - Base scores from CVSS v2.0, v3.0, v3.1, and v4.0
+- **Severity Levels** - Critical, High, Medium, Low based on CVSS
+- **CWE Mappings** - Common Weakness Enumeration classifications
+- **EPSS Score** - Probability of exploitation in the next 30 days
+- **KEV Status** - Whether the CVE is in CISA's Known Exploited Vulnerabilities catalog
+- **KEV Details** - Date added, ransomware usage, required action deadline
+- **Attack Vectors** - Network, Adjacent, Local, Physical
+- **Vulnerability Status** - Published, Modified, Analyzed, Rejected
+
+## 📈 Dashboard Panels
+
+The CVElk dashboard provides comprehensive vulnerability intelligence:
+
+| Panel | Description |
+|-------|-------------|
+| **Total CVEs** | Total count of indexed vulnerabilities |
+| **Critical** | CVEs with CVSS score ≥ 9.0 |
+| **High** | CVEs with CVSS score 7.0-8.9 |
+| **Medium** | CVEs with CVSS score 4.0-6.9 |
+| **In CISA KEV** | Known exploited vulnerabilities |
+| **High EPSS (>0.75)** | CVEs with >75% exploitation probability |
+| **CVEs Over Time** | Stacked bar chart by severity over time |
+| **Severity Distribution** | Donut chart breakdown |
+| **Top Weakness Types (CWE)** | Most common vulnerability categories |
+| **Top CNA Publishers** | Most active CVE Numbering Authorities |
+| **CVSS Version Distribution** | Breakdown of v2.0/v3.0/v3.1/v4.0 |
+| **Attack Vector** | Network vs Local vs Adjacent vs Physical |
+| **EPSS Score Distribution** | Histogram of exploitation probabilities |
+| **KEV Cumulative Growth** | Area chart of KEV additions over time |
+| **CVSS Score Distribution** | Histogram of base scores |
+| **Vulnerability Status** | Published, Modified, Analyzed breakdown |
+
+## 📖 CLI Commands
 
 ```bash
-pip install cvelk
-
-# Configure via environment variables
-export ELASTICSEARCH_HOST=http://localhost:9200
-export KIBANA_HOST=http://localhost:5601
-
-# Sync and visualize
-cvelk sync --days 30
-cvelk setup
-```
-
-## 📖 Usage
-
-### CLI Commands
-
-```bash
-# Sync CVEs from the last 7 days (default)
+# Full sync from all sources (recommended for initial setup)
 cvelk sync
 
-# Sync CVEs from the last 30 days
-cvelk sync --days 30
+# Watch mode - auto-update every 15 minutes
+cvelk watch
 
-# Full sync of ALL CVEs (takes several hours)
-cvelk sync --full
+# Watch with custom interval
+cvelk watch --interval 5      # Every 5 minutes
+cvelk watch --interval 30     # Every 30 minutes
+
+# Sync specific years only
+cvelk sync --years 2024 --years 2023
+
+# Skip NVD enrichment (much faster)
+cvelk sync --skip-nvd
 
 # Skip EPSS or KEV enrichment
 cvelk sync --skip-epss --skip-kev
 
-# Set up Kibana dashboards
+# Set up Kibana dashboard
 cvelk setup
 
 # Show statistics
@@ -102,132 +131,80 @@ cvelk stats
 cvelk search "log4j"
 cvelk search CVE-2021-44228
 
-# Show current configuration
+# Show configuration
 cvelk config
-
-# Get help
-cvelk --help
-```
-
-### Python API
-
-```python
-import asyncio
-from cvelk.config import get_settings
-from cvelk.services import NVDService, EPSSService, KEVService
-
-async def main():
-    settings = get_settings()
-
-    # Fetch recent CVEs
-    nvd = NVDService(settings)
-    async for cve in nvd.fetch_recent(days=7):
-        print(f"{cve.cve_id}: {cve.base_score} - {cve.description[:50]}...")
-
-asyncio.run(main())
 ```
 
 ## ⚙️ Configuration
 
-CVElk is configured via environment variables or a `.env` file:
+Configure via environment variables or `.env` file:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `ELASTICSEARCH_HOST` | Elasticsearch URL | `http://localhost:9200` |
-| `ELASTICSEARCH_USERNAME` | Elasticsearch username | `elastic` |
-| `ELASTICSEARCH_PASSWORD` | Elasticsearch password | - |
-| `ELASTICSEARCH_INDEX_NAME` | Index name for CVEs | `cves` |
 | `KIBANA_HOST` | Kibana URL | `http://localhost:5601` |
-| `NVD_API_KEY` | NVD API key (recommended) | - |
+| `NVD_API_KEY` | NVD API key (10x faster sync) | - |
 | `LOG_LEVEL` | Logging level | `INFO` |
 
-### Getting an NVD API Key
+### NVD API Key (Recommended)
 
-While optional, an NVD API key increases your rate limit from 5 to 50 requests per 30 seconds:
+Get a free API key for 10x faster NVD fetching:
 
 1. Visit [NVD API Key Request](https://nvd.nist.gov/developers/request-an-api-key)
-2. Fill out the form and receive your key via email
-3. Set `NVD_API_KEY=your-key-here`
+2. Set `NVD_API_KEY=your-key` in your environment
+
+Without key: 5 requests/30 seconds | With key: 50 requests/30 seconds
 
 ## 🏗️ Architecture
 
 ```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   NVD 2.0 API   │     │   EPSS Feed     │     │   CISA KEV      │
-└────────┬────────┘     └────────┬────────┘     └────────┬────────┘
-         │                       │                       │
-         └───────────────────────┼───────────────────────┘
-                                 │
-                          ┌──────▼──────┐
-                          │   CVElk     │
-                          │  (Python)   │
-                          └──────┬──────┘
-                                 │
-                    ┌────────────▼────────────┐
-                    │     Elasticsearch       │
-                    │      (CVE Index)        │
-                    └────────────┬────────────┘
-                                 │
-                    ┌────────────▼────────────┐
-                    │        Kibana           │
-                    │     (Dashboards)        │
-                    └─────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                        Data Sources                             │
+├─────────────────┬─────────────────┬───────────────┬─────────────┤
+│  CVE List V5    │    NVD API      │    EPSS       │  CISA KEV   │
+│   (Primary)     │  (Enrichment)   │   (Scores)    │  (Exploited)│
+│  ~300K CVEs     │  ~320K CVEs     │  ~300K scores │  ~1.5K CVEs │
+└────────┬────────┴────────┬────────┴───────┬───────┴──────┬──────┘
+         │                 │                │              │
+         └─────────────────┴────────────────┴──────────────┘
+                                   │
+                            ┌──────▼──────┐
+                            │   CVElk     │
+                            │  (Python)   │
+                            └──────┬──────┘
+                                   │
+                      ┌────────────▼────────────┐
+                      │     Elasticsearch       │
+                      │        8.17.0           │
+                      │    303,893 documents    │
+                      │       183.7 MB          │
+                      └────────────┬────────────┘
+                                   │
+                      ┌────────────▼────────────┐
+                      │        Kibana           │
+                      │        8.17.0           │
+                      │    16-Panel Dashboard   │
+                      └─────────────────────────┘
 ```
-
-## 🔒 Security
-
-- **TLS/SSL** - All connections encrypted by default in production
-- **Authentication** - Elasticsearch and Kibana protected with credentials
-- **Non-root Docker** - Container runs as unprivileged user
-- **Dependency Scanning** - Automated vulnerability scanning in CI
-
-See [SECURITY.md](SECURITY.md) for security policy and vulnerability reporting.
 
 ## 🧪 Development
 
 ```bash
-# Clone and setup
+# Clone and install
 git clone https://github.com/jgamblin/CVElk.git
 cd CVElk
 pip install -e ".[dev]"
 
-# Run linter
-make lint
-
-# Run tests
-make test
-
-# Run tests with coverage
-make test-cov
-
-# Format code
-make format
-
-# Type checking
-make type-check
+# Development commands
+make lint        # Run linter
+make test        # Run tests
+make format      # Format code
+make type-check  # Type checking
 ```
-
-## 📊 Data Sources
-
-| Source | Description | Update Frequency |
-|--------|-------------|------------------|
-| [NVD](https://nvd.nist.gov/) | NIST National Vulnerability Database | Real-time |
-| [EPSS](https://www.first.org/epss/) | Exploit Prediction Scoring System | Daily |
-| [CISA KEV](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) | Known Exploited Vulnerabilities | As needed |
-
-## 🤝 Contributing
-
-Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
 
 ## 📜 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT License - see [LICENSE](LICENSE) for details.
 
 ## 👤 Author
 
@@ -235,7 +212,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🙏 Acknowledgments
 
-- [NIST NVD](https://nvd.nist.gov/) for the comprehensive CVE database
-- [FIRST.org](https://www.first.org/epss/) for the EPSS scoring system
-- [CISA](https://www.cisa.gov/) for the KEV catalog
-- [Elastic](https://www.elastic.co/) for the amazing ELK stack
+- [CVE Project](https://github.com/CVEProject/cvelistV5) - Authoritative CVE repository
+- [NIST NVD](https://nvd.nist.gov/) - National Vulnerability Database
+- [FIRST.org EPSS](https://www.first.org/epss/) - Exploit Prediction Scoring
+- [CISA](https://www.cisa.gov/) - Known Exploited Vulnerabilities catalog
+- [Elastic](https://www.elastic.co/) - Elasticsearch and Kibana

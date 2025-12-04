@@ -803,5 +803,88 @@ def config() -> None:
     console.print(table)
 
 
+@app.command()
+def watch(
+    interval: Annotated[
+        int,
+        typer.Option(
+            "--interval",
+            "-i",
+            help="Update interval in minutes.",
+        ),
+    ] = 15,
+    skip_nvd: Annotated[
+        bool,
+        typer.Option(
+            "--skip-nvd",
+            help="Skip NVD data enrichment (faster updates).",
+        ),
+    ] = True,
+    skip_epss: Annotated[
+        bool,
+        typer.Option(
+            "--skip-epss",
+            help="Skip EPSS data enrichment.",
+        ),
+    ] = False,
+    skip_kev: Annotated[
+        bool,
+        typer.Option(
+            "--skip-kev",
+            help="Skip KEV data enrichment.",
+        ),
+    ] = False,
+) -> None:
+    """Watch for CVE updates and sync automatically.
+
+    Runs continuous updates at the specified interval (default: 15 minutes).
+    By default, skips NVD enrichment for faster incremental updates.
+
+    The CVE List V5 repository updates every 7 minutes, so a 15-minute
+    interval ensures you catch all updates with minimal load.
+
+    Examples:
+        cvelk watch                    # Update every 15 minutes
+        cvelk watch --interval 30      # Update every 30 minutes
+        cvelk watch --interval 5       # Update every 5 minutes
+    """
+    import time
+    from datetime import datetime
+
+    settings = get_settings()
+
+    console.print(Panel.fit("[bold blue]CVElk Watch Mode[/]", border_style="blue"))
+    console.print(f"[dim]Update interval: {interval} minutes[/]")
+    console.print(f"[dim]NVD enrichment: {'Disabled' if skip_nvd else 'Enabled'}[/]")
+    console.print(f"[dim]EPSS enrichment: {'Disabled' if skip_epss else 'Enabled'}[/]")
+    console.print(f"[dim]KEV enrichment: {'Disabled' if skip_kev else 'Enabled'}[/]")
+    console.print("\n[yellow]Press Ctrl+C to stop[/]\n")
+
+    update_count = 0
+    while True:
+        update_count += 1
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        console.print(f"\n[bold cyan]═══ Update #{update_count} at {timestamp} ═══[/]")
+
+        try:
+            asyncio.run(_run_full_sync(settings, skip_nvd, skip_epss, skip_kev, batch_size=1000))
+            console.print(f"[green]✓[/] Update complete. Next update in {interval} minutes.")
+        except Exception as e:
+            console.print(f"[red]✗[/] Update failed: {e}")
+            console.print(f"[yellow]Will retry in {interval} minutes.[/]")
+
+        # Sleep for the interval
+        try:
+            for remaining in range(interval * 60, 0, -1):
+                mins, secs = divmod(remaining, 60)
+                timer = f"Next update in: {mins:02d}:{secs:02d}"
+                console.print(f"\r{timer}", end="")
+                time.sleep(1)
+            console.print("\r" + " " * 30 + "\r", end="")  # Clear the line
+        except KeyboardInterrupt:
+            console.print("\n\n[yellow]Watch mode stopped by user.[/]")
+            raise typer.Exit(0) from None
+
+
 if __name__ == "__main__":
     app()

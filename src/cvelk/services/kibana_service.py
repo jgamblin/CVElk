@@ -217,6 +217,7 @@ class KibanaService:
         name: str,
         index_pattern: str,
         time_field: str = "published",
+        data_view_id: str = "cves-data-view",
     ) -> dict[str, Any]:
         """Create a Kibana data view (index pattern).
 
@@ -224,24 +225,50 @@ class KibanaService:
             name: Data view name.
             index_pattern: Elasticsearch index pattern.
             time_field: Time field for time-based filtering.
+            data_view_id: Explicit ID for the data view.
 
         Returns:
             Created data view info.
         """
-        url = self._url("/api/data_views/data_view")
+        # Runtime field script for CVSS version classification
+        cvss_version_script = """
+if (doc.containsKey('cvssV4BaseScore') && doc['cvssV4BaseScore'].size() > 0) {
+    emit('CVSS 4.0');
+} else if (doc.containsKey('cvssV3Version') && doc['cvssV3Version'].size() > 0) {
+    def v = doc['cvssV3Version'].value;
+    if (v == '3.1') { emit('CVSS 3.1'); }
+    else if (v == '3.0') { emit('CVSS 3.0'); }
+    else { emit('CVSS 3.x'); }
+} else {
+    emit('CVSS 2.0');
+}
+""".strip()
 
         body = {
             "data_view": {
+                "id": data_view_id,
                 "title": index_pattern,
                 "name": name,
                 "timeFieldName": time_field,
+                "runtimeFieldMap": {
+                    "cvssVersion": {
+                        "type": "keyword",
+                        "script": {"source": cvss_version_script},
+                    }
+                },
             }
         }
 
-        logger.info(f"Creating data view '{name}' for index '{index_pattern}'")
+        logger.info(f"Creating data view '{name}' (id={data_view_id}) for index '{index_pattern}'")
 
         try:
             async with httpx.AsyncClient(timeout=10) as client:
+                # First try to delete existing data view if it exists
+                delete_url = self._url(f"/api/data_views/data_view/{data_view_id}")
+                await client.delete(delete_url, headers=self._headers)
+
+                # Create data view with explicit ID
+                url = self._url("/api/data_views/data_view")
                 response = await client.post(
                     url,
                     headers=self._headers,
@@ -253,67 +280,14 @@ class KibanaService:
                     logger.info(f"Data view created: {result.get('data_view', {}).get('id')}")
                     return result
 
-                # Check if already exists - update to ensure time field is set
-                if response.status_code == 409 or (
-                    response.status_code == 400 and "Duplicate" in response.text
-                ):
-                    logger.info(f"Data view '{name}' already exists, updating time field...")
-                    # Find existing data view and update it
-                    return await self._update_data_view_time_field(index_pattern, time_field)
-
-                logger.error(f"Failed to create data view: {response.status_code}")
+                logger.error(
+                    f"Failed to create data view: {response.status_code} - {response.text}"  # noqa: E501
+                )
                 return {"error": response.text}
 
         except Exception as e:
             logger.error(f"Failed to create data view: {e}")
             return {"error": str(e)}
-
-    async def _update_data_view_time_field(
-        self,
-        index_pattern: str,
-        time_field: str,
-    ) -> dict[str, Any]:
-        """Update existing data view to set the time field.
-
-        Args:
-            index_pattern: Index pattern to find.
-            time_field: Time field to set.
-
-        Returns:
-            Update result.
-        """
-        try:
-            async with httpx.AsyncClient(timeout=10) as client:
-                # Get all data views to find the matching one
-                response = await client.get(
-                    self._url("/api/data_views"),
-                    headers=self._headers,
-                )
-                if response.status_code != 200:
-                    return {"exists": True, "updated": False}
-
-                data_views = response.json().get("data_view", [])
-
-                # Find data view(s) matching our index pattern
-                for dv in data_views:
-                    if dv.get("title") == index_pattern:
-                        dv_id = dv.get("id")
-                        # Update the time field
-                        update_response = await client.post(
-                            self._url(f"/api/data_views/data_view/{dv_id}"),
-                            headers=self._headers,
-                            json={"data_view": {"timeFieldName": time_field}},
-                        )
-                        if update_response.status_code == 200:
-                            logger.info(
-                                f"Updated data view '{dv_id}' with time field '{time_field}'"
-                            )
-
-                return {"exists": True, "updated": True}
-
-        except Exception as e:
-            logger.warning(f"Failed to update data view time field: {e}")
-            return {"exists": True, "updated": False}
 
     async def get_dashboard_url(self, dashboard_id: str) -> str:
         """Get the URL for a dashboard.
@@ -649,33 +623,43 @@ class KibanaService:
     ) -> dict[str, Any]:
         """Set up the CVElk dashboard and data view.
 
+        This method:
+        1. Creates the data view with proper ID, time field, and runtime fields
+        2. Sets dark theme
+        3. Imports the dashboard from NDJSON
+
         Args:
-            dashboard_path: Path to dashboard NDJSON file. If not provided,
-                creates dashboard programmatically.
+            dashboard_path: Path to dashboard NDJSON file.
 
         Returns:
             Setup result with dashboard URL.
         """
         result: dict[str, Any] = {}
 
-        # Create data view for CVEs index
+        # Step 1: Create data view with explicit ID that matches the dashboard
+        # This includes the runtime field for cvssVersion
         dv_result = await self.create_data_view(
             name="CVEs",
             index_pattern=self.settings.elasticsearch.index_name,
             time_field="published",
+            data_view_id="cves-data-view",
         )
         result["data_view"] = dv_result
 
-        # Set dark theme
+        if "error" in dv_result:
+            logger.error(f"Failed to create data view: {dv_result['error']}")
+            return result
+
+        # Step 2: Set dark theme
         theme_result = await self.set_dark_theme()
         result["dark_theme"] = theme_result
 
-        # Import dashboard if path provided, otherwise create programmatically
+        # Step 3: Import dashboard from NDJSON
         if dashboard_path and Path(dashboard_path).exists():
             import_result = await self.import_saved_objects(dashboard_path)
             result["import"] = import_result
 
-            # Extract dashboard ID from import result
+            # Extract dashboard ID and set URL
             if "successResults" in import_result:
                 for obj in import_result["successResults"]:
                     if obj.get("type") == "dashboard":
@@ -683,8 +667,12 @@ class KibanaService:
                         result["dashboard_url"] = await self.get_dashboard_url(dashboard_id)
                         await self.set_default_dashboard(dashboard_id)
                         break
+            elif import_result.get("successCount", 0) > 0:
+                # Dashboard was imported but no successResults (overwrite case)
+                result["dashboard_url"] = await self.get_dashboard_url("cvelk-main-dashboard")
+                await self.set_default_dashboard("cvelk-main-dashboard")
         else:
-            # Create dashboard programmatically
+            # Create dashboard programmatically if no NDJSON
             logger.info("Creating dashboard programmatically...")
             dashboard_result = await self.create_dashboard_programmatic()
             result.update(dashboard_result)
