@@ -75,7 +75,7 @@ class NonRetryableHTTPError(HTTPClientError):
 
 @asynccontextmanager
 async def create_http_client(
-    timeout: int = 30,
+    timeout: int = 30,  # noqa: ASYNC109
     **kwargs: Any,
 ) -> AsyncGenerator[httpx.AsyncClient, None]:
     """Create an async HTTP client with sensible defaults.

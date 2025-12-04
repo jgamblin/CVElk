@@ -712,7 +712,7 @@ class KibanaDashboardBuilder:
             "attributes": {
                 "title": "CVElk Vulnerability Intelligence Dashboard",
                 "description": (
-                    "Real-time vulnerability tracking with NVD, EPSS, " "and CISA KEV data"
+                    "Real-time vulnerability tracking with NVD, EPSS, and CISA KEV data"
                 ),
                 "kibanaSavedObjectMeta": {"searchSourceJSON": "{}"},
                 "optionsJSON": json.dumps(
@@ -739,7 +739,7 @@ class KibanaDashboardBuilder:
 
         if resp.status_code in [200, 201]:
             print("  ✓ Dashboard created")
-            print(f"\n📊 Dashboard URL: {self.kibana_url}/app/dashboards" f"#/view/{dashboard_id}")
+            print(f"\n📊 Dashboard URL: {self.kibana_url}/app/dashboards#/view/{dashboard_id}")
             return True
 
         print(f"  ✗ Failed: {resp.status_code} - {resp.text[:300]}")

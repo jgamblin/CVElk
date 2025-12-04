@@ -549,7 +549,7 @@ if (doc.containsKey('cvssV4BaseScore') && doc['cvssV4BaseScore'].size() > 0) {
         ]
 
         dashboard_desc = (
-            "Comprehensive CVE dashboard with NVD data, " "EPSS risk scores, and CISA KEV status"
+            "Comprehensive CVE dashboard with NVD data, EPSS risk scores, and CISA KEV status"
         )
 
         dashboard_payload = {

@@ -474,7 +474,7 @@ def sync(
     console.print("\n[green]✓[/] Full sync complete!")
 
 
-async def _run_full_sync(  # noqa: PLR0915
+async def _run_full_sync(  # noqa: PLR0912, PLR0915
     settings: "Settings",
     skip_nvd: bool,
     skip_epss: bool,
@@ -851,8 +851,8 @@ def watch(
         cvelk watch --interval 30      # Update every 30 minutes
         cvelk watch --interval 5       # Update every 5 minutes
     """
-    import time
-    from datetime import datetime
+    import time  # noqa: PLC0415
+    from datetime import datetime  # noqa: PLC0415
 
     settings = get_settings()
 
