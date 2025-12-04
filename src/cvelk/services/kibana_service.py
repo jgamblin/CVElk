@@ -70,7 +70,7 @@ class KibanaService:
                     f"{self.base_url}/api/status",
                     headers=self._headers,
                 )
-                return response.status_code == 200
+                return bool(response.status_code == 200)
         except Exception as e:
             logger.error(f"Kibana ping failed: {e}")
             return False
@@ -157,7 +157,7 @@ class KibanaService:
                 )
 
                 if response.status_code == 200:
-                    result = response.json()
+                    result: dict[str, Any] = response.json()
                     logger.info(
                         f"Import complete: {result.get('successCount', 0)} success, "
                         f"{len(result.get('errors', []))} errors"
@@ -203,7 +203,7 @@ class KibanaService:
                 )
 
                 if response.status_code == 200:
-                    return response.content
+                    return bytes(response.content)
 
                 logger.error(f"Export failed: {response.status_code}")
                 return b""
@@ -276,12 +276,12 @@ if (doc.containsKey('cvssV4BaseScore') && doc['cvssV4BaseScore'].size() > 0) {
                 )
 
                 if response.status_code in (200, 201):
-                    result = response.json()
+                    result: dict[str, Any] = response.json()
                     logger.info(f"Data view created: {result.get('data_view', {}).get('id')}")
                     return result
 
                 logger.error(
-                    f"Failed to create data view: {response.status_code} - {response.text}"  # noqa: E501
+                    f"Failed to create data view: {response.status_code} - {response.text}"
                 )
                 return {"error": response.text}
 
@@ -416,7 +416,7 @@ if (doc.containsKey('cvssV4BaseScore') && doc['cvssV4BaseScore'].size() > 0) {
         result: dict[str, Any] = {}
 
         # Create saved searches
-        searches = [
+        searches: list[dict[str, Any]] = [
             {
                 "id": "cvelk-high-risk-search",
                 "title": "High Risk CVEs",

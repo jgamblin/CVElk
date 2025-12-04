@@ -249,9 +249,9 @@ class CVE(BaseModel):
         """Extract English description from CVE data."""
         for desc in cve_data.get("descriptions", []):
             if desc.get("lang") == "en":
-                return desc.get("value", "")
+                return str(desc.get("value", ""))
         descriptions = cve_data.get("descriptions", [])
-        return descriptions[0].get("value", "") if descriptions else ""
+        return str(descriptions[0].get("value", "")) if descriptions else ""
 
     @staticmethod
     def _extract_cvss_v2(metrics: dict[str, Any]) -> "CVSSMetrics | None":

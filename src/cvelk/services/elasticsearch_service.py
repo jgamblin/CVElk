@@ -103,13 +103,14 @@ class ElasticsearchService:
             logger.info(f"Connecting to Elastic Cloud: {es_settings.cloud_id[:20]}...")
 
             if es_settings.has_api_key:
-                # API key authentication
+                # API key auth (api_key_id guaranteed when has_api_key is True)
+                api_key_id = es_settings.api_key_id or ""
+                api_key_secret = (
+                    es_settings.api_key.get_secret_value() if es_settings.api_key else ""
+                )
                 return Elasticsearch(
                     cloud_id=es_settings.cloud_id,
-                    api_key=(
-                        es_settings.api_key_id,
-                        es_settings.api_key.get_secret_value() if es_settings.api_key else "",
-                    ),
+                    api_key=(api_key_id, api_key_secret),
                 )
             # Basic authentication
             return Elasticsearch(
@@ -148,7 +149,7 @@ class ElasticsearchService:
             True if connection successful.
         """
         try:
-            return self.client.ping()
+            return bool(self.client.ping())
         except Exception as e:
             logger.error(f"Elasticsearch ping failed: {e}")
             return False
@@ -222,7 +223,7 @@ class ElasticsearchService:
         """
         index = index_name or self.settings.elasticsearch.index_name
 
-        def generate_actions():
+        def generate_actions() -> Any:
             for cve in cves:
                 doc = cve.to_elasticsearch_doc()
                 doc_id = doc.pop("_id")
@@ -242,8 +243,10 @@ class ElasticsearchService:
             stats_only=True,
         )
 
-        logger.info(f"Bulk index complete: {success} success, {errors} errors")
-        return success, errors
+        # When stats_only=True, errors is always an int
+        error_count = errors if isinstance(errors, int) else len(errors)
+        logger.info(f"Bulk index complete: {success} success, {error_count} errors")
+        return int(success), error_count
 
     def get_cve(self, cve_id: str, index_name: str | None = None) -> dict[str, Any] | None:
         """Get a CVE document by ID.
@@ -259,7 +262,8 @@ class ElasticsearchService:
 
         try:
             result = self.client.get(index=index, id=cve_id)
-            return result["_source"]
+            source: dict[str, Any] = result["_source"]
+            return source
         except Exception:
             return None
 
@@ -302,7 +306,7 @@ class ElasticsearchService:
 
         try:
             result = self.client.count(index=index)
-            return result["count"]
+            return int(result["count"])
         except Exception:
             return 0
 

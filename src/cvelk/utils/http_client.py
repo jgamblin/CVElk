@@ -140,7 +140,8 @@ async def handle_response(response: httpx.Response) -> dict[str, Any]:
         NonRetryableHTTPError: For 4xx errors (except 429).
     """
     if response.status_code == 200:
-        return response.json()
+        result: dict[str, Any] = response.json()
+        return result
 
     error_msg = f"HTTP {response.status_code}: {response.text[:200]}"
 
@@ -159,4 +160,5 @@ async def handle_response(response: httpx.Response) -> dict[str, Any]:
         logger.error(f"Client error: {error_msg}")
         raise NonRetryableHTTPError(error_msg, response.status_code)
 
-    return response.json()
+    final_result: dict[str, Any] = response.json()
+    return final_result

@@ -5,6 +5,7 @@ A modern CLI built with Typer for managing CVE data in Elasticsearch.
 
 import asyncio
 import sys
+from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any
 
@@ -12,10 +13,11 @@ import typer
 from loguru import logger
 from rich.console import Console
 from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.progress import Progress, SpinnerColumn, TaskID, TextColumn
 from rich.table import Table
 
 if TYPE_CHECKING:
+    from cvelk.config import Settings
     from cvelk.models.cve import CVE
 
 from cvelk import __version__
@@ -83,7 +85,7 @@ def main(
 
 
 async def _run_sync_nvd(
-    settings: "Settings",  # noqa: F821
+    settings: "Settings",
     days: int | None,
     full: bool,
     skip_epss: bool,
@@ -148,8 +150,8 @@ def _get_cve_generator(
     full: bool,
     sync_days: int | None,
     progress: Progress,
-    task: "TaskID",  # noqa: F821
-) -> "AsyncGenerator":  # noqa: F821
+    task: TaskID,
+) -> AsyncGenerator[Any, None]:
     """Get the appropriate CVE generator based on sync options."""
     if full:
         progress.update(task, description="Fetching ALL CVEs (this will take a while)...")
@@ -162,12 +164,12 @@ def _get_cve_generator(
 
 
 async def _process_cves(
-    cve_generator: "AsyncGenerator",  # noqa: F821
+    cve_generator: AsyncGenerator[Any, None],
     epss_service: EPSSService | None,
     kev_service: KEVService | None,
     progress: Progress,
-    task: "TaskID",  # noqa: F821
-) -> list:
+    task: TaskID,
+) -> list[Any]:
     """Process and enrich CVEs from the generator."""
     cves = []
     async for cve in cve_generator:
@@ -230,7 +232,7 @@ def sync_nvd(
 
 
 async def _run_sync_v5(  # noqa: PLR0915
-    settings: "Settings",  # noqa: F821
+    settings: "Settings",
     years: list[int] | None,
     skip_epss: bool,
     skip_kev: bool,
@@ -473,7 +475,7 @@ def sync(
 
 
 async def _run_full_sync(  # noqa: PLR0915
-    settings: "Settings",  # noqa: F821
+    settings: "Settings",
     skip_nvd: bool,
     skip_epss: bool,
     skip_kev: bool,
@@ -734,6 +736,7 @@ def search(
         raise typer.Exit(1)
 
     # Build query
+    es_query: dict[str, Any]
     if query.upper().startswith("CVE-"):
         # Exact CVE ID search
         es_query = {"term": {"cveId": query.upper()}}

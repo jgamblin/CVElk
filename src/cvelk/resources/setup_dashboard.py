@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# ruff: noqa: T201
 """CVElk Dashboard Setup Script.
 
 This script programmatically creates the CVElk dashboard in Kibana 8.x.
@@ -70,7 +71,7 @@ class KibanaDashboardBuilder:
         """Get Kibana version."""
         try:
             resp = self._get("/api/status")
-            return resp.json().get("version", {}).get("number", "8.17.0")
+            return str(resp.json().get("version", {}).get("number", "8.17.0"))
         except Exception:
             return "8.17.0"
 
@@ -757,8 +758,10 @@ class KibanaDashboardBuilder:
 
         # Try alternative method for older Kibana versions
         version = self.get_kibana_version()
-        payload = {"attributes": {"defaultRoute": "/app/dashboards#/view/cvelk-main-dashboard"}}
-        resp = self._put(f"/api/saved_objects/config/{version}", payload)
+        alt_payload: dict[str, Any] = {
+            "attributes": {"defaultRoute": "/app/dashboards#/view/cvelk-main-dashboard"}
+        }
+        resp = self._put(f"/api/saved_objects/config/{version}", alt_payload)
 
         if resp.status_code == 200:
             print("  ✓ Default route set to dashboard")
