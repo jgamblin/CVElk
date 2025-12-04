@@ -121,7 +121,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Update release with package links
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           append_body: true
           body: |
