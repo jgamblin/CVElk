@@ -1,5 +1,5 @@
 # Build stage
-FROM python:3.11-slim as builder
+FROM python:3.14-slim as builder
 
 WORKDIR /app
 
@@ -14,7 +14,7 @@ COPY src/ ./src/
 RUN hatch build -t wheel
 
 # Runtime stage
-FROM python:3.11-slim
+FROM python:3.14-slim
 
 # Create non-root user
 RUN useradd --create-home --shell /bin/bash cvelk
