@@ -201,7 +201,7 @@ class NVDService:
 
         return params
 
-    @create_retry_decorator()  # type: ignore[misc]
+    @create_retry_decorator()  # type: ignore[misc, untyped-decorator]
     async def _fetch_page(
         self,
         client: httpx.AsyncClient,

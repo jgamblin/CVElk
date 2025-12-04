@@ -42,7 +42,7 @@ class KEVService:
         """Get cached KEV catalog."""
         return self._catalog
 
-    @create_retry_decorator(max_attempts=3, min_wait=5, max_wait=30)  # type: ignore[misc]
+    @create_retry_decorator(max_attempts=3, min_wait=5, max_wait=30)  # type: ignore[misc, untyped-decorator]
     async def fetch(self) -> KEVCatalog:
         """Fetch and parse the KEV catalog.
 
