@@ -11,6 +11,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+import anyio
 import httpx
 from loguru import logger
 
@@ -655,7 +656,7 @@ if (doc.containsKey('cvssV4BaseScore') && doc['cvssV4BaseScore'].size() > 0) {
         result["dark_theme"] = theme_result
 
         # Step 3: Import dashboard from NDJSON
-        if dashboard_path and Path(dashboard_path).exists():
+        if dashboard_path and await anyio.Path(dashboard_path).exists():
             import_result = await self.import_saved_objects(dashboard_path)
             result["import"] = import_result
 
