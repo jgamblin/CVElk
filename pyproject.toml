@@ -35,6 +35,13 @@ dependencies = [
     "typer>=0.12.0",
     "rich>=13.7.0",
     "anyio>=4.3.0",
+    # Transitive dependency pins for security (Dependabot alerts)
+    "Pillow>=10.3.0",
+    "certifi>=2023.7.22",
+    "urllib3>=2.5.0",
+    "requests>=2.32.4",
+    "fonttools>=4.60.2",
+    "idna>=3.7",
 ]
 
 [project.optional-dependencies]
