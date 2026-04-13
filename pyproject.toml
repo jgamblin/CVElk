@@ -51,7 +51,7 @@ dev = [
     "pytest-cov>=4.1.0",
     "pytest-httpx>=0.36.2",
     "ruff==0.15.9",
-    "mypy>=1.8.0",
+    "mypy>=1.20.1",
     "pre-commit>=3.6.0",
     "pandas-stubs>=2.2.0",
     "types-requests>=2.31.0",
