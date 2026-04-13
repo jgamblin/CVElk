@@ -32,7 +32,7 @@ dependencies = [
     "pydantic-settings>=2.2.0",
     "loguru>=0.7.3",
     "tenacity>=8.2.3",
-    "typer>=0.12.0",
+    "typer>=0.24.1",
     "rich>=13.7.0",
     "anyio>=4.3.0",
     # Transitive dependency pins for security (Dependabot alerts)
