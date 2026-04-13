@@ -37,7 +37,7 @@ dependencies = [
     "anyio>=4.3.0",
     # Transitive dependency pins for security (Dependabot alerts)
     "Pillow>=10.3.0",
-    "certifi>=2023.7.22",
+    "certifi>=2026.2.25",
     "urllib3>=2.5.0",
     "requests>=2.32.4",
     "fonttools>=4.60.2",
