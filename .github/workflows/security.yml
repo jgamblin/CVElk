@@ -65,6 +65,10 @@ jobs:
           format: 'sarif'
           output: 'trivy-results.sarif'
           severity: 'CRITICAL,HIGH'
+          # Only report vulnerabilities that have a fix available. This drops the
+          # Debian base-image "won't fix" CVEs (apt, tar, util-linux, perl, etc.)
+          # that dominate the code-scanning results and can't be remediated here.
+          ignore-unfixed: true
 
       - name: Upload Trivy scan results
         uses: github/codeql-action/upload-sarif@v4
