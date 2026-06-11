@@ -22,6 +22,9 @@ RUN useradd --create-home --shell /bin/bash cvelk
 # Set working directory
 WORKDIR /app
 
+# Upgrade pip to clear known pip CVEs in the base image (Trivy flags pip 25.0.1)
+RUN pip install --no-cache-dir --upgrade pip
+
 # Install the wheel from builder stage
 COPY --from=builder /app/dist/*.whl ./
 RUN pip install --no-cache-dir ./*.whl && rm -f ./*.whl
