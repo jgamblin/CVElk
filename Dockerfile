@@ -16,6 +16,9 @@ RUN hatch build -t wheel
 # Runtime stage
 FROM python:3.12-slim
 
+# Upgrade OS packages to pick up security fixes (e.g. liblzma5 CVE-2026-34743)
+RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
+
 # Create non-root user
 RUN useradd --create-home --shell /bin/bash cvelk
 
