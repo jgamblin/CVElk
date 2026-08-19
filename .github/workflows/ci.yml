@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [main]
 
+# Every job here only reads the repo. Codecov runs tokenless (use_oidc: false)
+# and neither upload-artifact nor the gha build cache uses GITHUB_TOKEN.
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
