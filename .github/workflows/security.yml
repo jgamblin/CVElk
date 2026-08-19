@@ -44,7 +44,7 @@ jobs:
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
         with:
-          languages: python
+          languages: python, actions
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v4
@@ -59,7 +59,7 @@ jobs:
         run: docker build -t cvelk:scan .
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: 'cvelk:scan'
           format: 'sarif'
@@ -85,6 +85,6 @@ jobs:
           fetch-depth: 0
 
       - name: TruffleHog OSS
-        uses: trufflesecurity/trufflehog@main
+        uses: trufflesecurity/trufflehog@bcfcf73aaf4759d4dadc2783177c245a02792318 # v3.97.0
         with:
           extra_args: --only-verified
