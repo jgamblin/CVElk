@@ -24,12 +24,21 @@ jobs:
 
       - name: Get version
         id: version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          INPUT_VERSION: ${{ github.event.inputs.version }}
         run: |
-          if [ "${{ github.event_name }}" = "release" ]; then
-            echo "version=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
+          if [ "$EVENT_NAME" = "release" ]; then
+            version="${RELEASE_TAG#v}"
           else
-            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+            version="${INPUT_VERSION#v}"
           fi
+          if ! printf '%s' "$version" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.]+)?$'; then
+            echo "::error::Invalid version: $version"
+            exit 1
+          fi
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
 
       - name: Set up Python
         uses: actions/setup-python@v7
