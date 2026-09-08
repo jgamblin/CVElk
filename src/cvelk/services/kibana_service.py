@@ -84,35 +84,47 @@ class KibanaService:
         """
         logger.info("Setting Kibana dark theme")
 
+        if await self._update_config({"theme:darkMode": True}, "dark theme"):
+            logger.info("Dark theme enabled")
+            return True
+        return False
+
+    async def _update_config(self, attributes: dict[str, Any], description: str) -> bool:
+        """Update Kibana's versioned config object after startup migration."""
         try:
-            # Get Kibana version for config ID
             async with httpx.AsyncClient(timeout=10) as client:
-                status_response = await client.get(
-                    f"{self.base_url}/api/status",
+                config_response = await client.get(
+                    self._url("/api/saved_objects/_find?type=config&per_page=100"),
                     headers=self._headers,
                 )
-                if status_response.status_code != 200:
-                    logger.warning("Could not get Kibana version")
+                if config_response.status_code != 200:
+                    logger.warning("Could not find Kibana configuration")
                     return False
 
-                version = status_response.json().get("version", {}).get("number", "9.0.0")
+                saved_objects = config_response.json().get("saved_objects", [])
+                version = saved_objects[0].get("id") if saved_objects else None
+                if not isinstance(version, str):
+                    logger.warning("Kibana configuration is not available yet")
+                    return False
 
-                # Kibana 9.x uses saved_objects API for settings
-                url = self._url(f"/api/saved_objects/config/{version}")
-                response = await client.put(
-                    url,
-                    headers=self._headers,
-                    json={"attributes": {"theme:darkMode": True}},
-                )
-
-                if response.status_code == 200:
-                    logger.info("Dark theme enabled")
-                    return True
-
-                logger.warning(f"Failed to set dark theme: {response.status_code}")
+                url = self._url(f"/api/saved_objects/config/{version}?overwrite=true")
+                for attempt in range(5):
+                    response = await client.put(
+                        url,
+                        headers=self._headers,
+                        json={"attributes": attributes},
+                    )
+                    if response.status_code == 200:
+                        return True
+                    if response.status_code != 404 or attempt == 4:
+                        logger.warning(
+                            f"Failed to set Kibana {description}: {response.status_code}"
+                        )
+                        return False
+                    await anyio.sleep(1)
                 return False
         except Exception as e:
-            logger.error(f"Failed to set dark theme: {e}")
+            logger.error(f"Failed to set Kibana {description}: {e}")
             return False
 
     async def import_saved_objects(
@@ -310,35 +322,17 @@ if (doc.containsKey('cvssV4BaseScore') && doc['cvssV4BaseScore'].size() > 0) {
         Returns:
             True if successful.
         """
-        try:
-            async with httpx.AsyncClient(timeout=10) as client:
-                # Get Kibana version
-                status_response = await client.get(
-                    f"{self.base_url}/api/status",
-                    headers=self._headers,
-                )
-                version = status_response.json().get("version", {}).get("number", "9.0.0")
-
-                # Set default route
-                url = self._url(f"/api/saved_objects/config/{version}")
-                response = await client.put(
-                    url,
-                    headers=self._headers,
-                    json={"attributes": {"defaultRoute": f"/app/dashboards#/view/{dashboard_id}"}},
-                )
-
-                if response.status_code == 200:
-                    logger.info(f"Default dashboard set to {dashboard_id}")
-                    return True
-
-                logger.warning(f"Failed to set default dashboard: {response.status_code}")
-                return False
-        except Exception as e:
-            logger.error(f"Failed to set default dashboard: {e}")
-            return False
+        if await self._update_config(
+            {"defaultRoute": f"/app/dashboards#/view/{dashboard_id}"},
+            "default dashboard",
+        ):
+            logger.info(f"Default dashboard set to {dashboard_id}")
+            return True
+        return False
 
     async def create_saved_search(
         self,
+        *,
         search_id: str,
         title: str,
         description: str,

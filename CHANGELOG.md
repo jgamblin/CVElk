@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Elastic Stack 9.5.3** - Updated Elasticsearch and Kibana development and production deployments.
+- **NVD Rate Limits** - Configured rate limits now control the NVD client, with API-key defaults preserved.
+- **Incremental V5 Sync** - Watch mode can process only CVE files changed since the last successful repository sync.
+- **EPSS Units** - Dashboard thresholds and documentation now use the stored 0-100 percentage scale.
+- **Dashboard Refresh** - Kibana 9 severity-aware palettes and priority-risk filtering improve analyst triage.
+
 ## [2.0.0] - 2024-XX-XX
 
 ### Added

@@ -43,9 +43,8 @@ class NVDService:
         self.base_url = settings.nvd.base_url
 
         # Determine rate limit based on API key presence
-        rate_limit = 50 if settings.nvd.api_key else 5
         self.rate_limiter = RateLimiter(
-            requests_per_window=rate_limit,
+            requests_per_window=settings.nvd.effective_rate_limit,
             window_seconds=30,
         )
 
