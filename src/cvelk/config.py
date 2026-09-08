@@ -120,12 +120,12 @@ class NVDSettings(BaseSettings):
         description="API request timeout in seconds",
     )
 
-    @field_validator("rate_limit", mode="before")
-    @classmethod
-    def adjust_rate_limit(cls, v: int, info: "ValidationInfo") -> int:  # type: ignore[name-defined]  # noqa: F821
-        """Adjust rate limit based on whether API key is provided."""
-        # If api_key is set and rate_limit is at default, increase it
-        return v
+    @property
+    def effective_rate_limit(self) -> int:
+        """Return the rate limit appropriate for the configured API key."""
+        if self.api_key and self.rate_limit == 5:
+            return 50
+        return self.rate_limit
 
 
 class EPSSSettings(BaseSettings):

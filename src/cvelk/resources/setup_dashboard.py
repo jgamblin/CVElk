@@ -2,7 +2,7 @@
 # ruff: noqa: T201
 """CVElk Dashboard Setup Script.
 
-This script programmatically creates the CVElk dashboard in Kibana 8.x.
+This script programmatically creates the CVElk dashboard in Kibana 9.x.
 It uses the Saved Objects API to create:
 - Data view (index pattern) for the CVEs index
 - Lens visualizations embedded in the dashboard
@@ -71,9 +71,9 @@ class KibanaDashboardBuilder:
         """Get Kibana version."""
         try:
             resp = self._get("/api/status")
-            return str(resp.json().get("version", {}).get("number", "8.17.0"))
+            return str(resp.json().get("version", {}).get("number", "9.5.3"))
         except Exception:
-            return "8.17.0"
+            return "9.5.3"
 
     def find_or_create_data_view(self) -> str | None:
         """Find existing data view or create one for CVEs."""
@@ -135,6 +135,7 @@ class KibanaDashboardBuilder:
 
     def _create_metric_panel(
         self,
+        *,
         panel_id: str,
         title: str,
         query: str,
@@ -144,7 +145,7 @@ class KibanaDashboardBuilder:
     ) -> dict[str, Any]:
         """Create a Lens metric panel configuration."""
         return {
-            "version": "8.17.0",
+            "version": "9.5.3",
             "type": "lens",
             "gridData": {"x": grid_x, "y": grid_y, "w": 12, "h": 8, "i": panel_id},
             "panelIndex": panel_id,
@@ -197,7 +198,7 @@ class KibanaDashboardBuilder:
     def _create_severity_pie_panel(self) -> dict[str, Any]:
         """Create the severity distribution donut chart panel."""
         return {
-            "version": "8.17.0",
+            "version": "9.5.3",
             "type": "lens",
             "gridData": {"x": 0, "y": 8, "w": 16, "h": 14, "i": "severity-pie"},
             "panelIndex": "severity-pie",
@@ -277,7 +278,7 @@ class KibanaDashboardBuilder:
     def _create_time_series_panel(self) -> dict[str, Any]:
         """Create the CVEs over time stacked bar chart panel."""
         return {
-            "version": "8.17.0",
+            "version": "9.5.3",
             "type": "lens",
             "gridData": {"x": 16, "y": 8, "w": 32, "h": 14, "i": "cves-over-time"},
             "panelIndex": "cves-over-time",
@@ -368,7 +369,7 @@ class KibanaDashboardBuilder:
     def _create_epss_distribution_panel(self) -> dict[str, Any]:
         """Create the EPSS score distribution bar chart panel."""
         return {
-            "version": "8.17.0",
+            "version": "9.5.3",
             "type": "lens",
             "gridData": {"x": 0, "y": 22, "w": 24, "h": 12, "i": "epss-distribution"},
             "panelIndex": "epss-distribution",
@@ -412,28 +413,28 @@ class KibanaDashboardBuilder:
                                                     "ranges": [
                                                         {
                                                             "from": 0,
-                                                            "to": 0.1,
-                                                            "label": "0-0.1",
+                                                            "to": 10,
+                                                            "label": "0-10",
                                                         },
                                                         {
-                                                            "from": 0.1,
-                                                            "to": 0.3,
-                                                            "label": "0.1-0.3",
+                                                            "from": 10,
+                                                            "to": 30,
+                                                            "label": "10-30",
                                                         },
                                                         {
-                                                            "from": 0.3,
-                                                            "to": 0.5,
-                                                            "label": "0.3-0.5",
+                                                            "from": 30,
+                                                            "to": 50,
+                                                            "label": "30-50",
                                                         },
                                                         {
-                                                            "from": 0.5,
-                                                            "to": 0.7,
-                                                            "label": "0.5-0.7",
+                                                            "from": 50,
+                                                            "to": 75,
+                                                            "label": "50-75",
                                                         },
                                                         {
-                                                            "from": 0.7,
-                                                            "to": 1.0,
-                                                            "label": "0.7-1.0",
+                                                            "from": 75,
+                                                            "to": 100,
+                                                            "label": "75-100",
                                                         },
                                                     ],
                                                     "maxBars": "auto",
@@ -470,7 +471,7 @@ class KibanaDashboardBuilder:
     def _create_top_cwes_panel(self) -> dict[str, Any]:
         """Create the top CWEs horizontal bar chart panel."""
         return {
-            "version": "8.17.0",
+            "version": "9.5.3",
             "type": "lens",
             "gridData": {"x": 24, "y": 22, "w": 24, "h": 12, "i": "top-cwes"},
             "panelIndex": "top-cwes",
@@ -551,13 +552,13 @@ class KibanaDashboardBuilder:
     def _create_data_table_panel(self) -> dict[str, Any]:
         """Create the high-risk CVEs data table panel."""
         return {
-            "version": "8.17.0",
+            "version": "9.5.3",
             "type": "lens",
             "gridData": {"x": 0, "y": 34, "w": 48, "h": 14, "i": "cve-table"},
             "panelIndex": "cve-table",
             "embeddableConfig": {
                 "attributes": {
-                    "title": "Recent High-Risk CVEs (Critical/High Severity)",
+                    "title": "Priority CVEs (Critical, KEV, or High EPSS)",
                     "visualizationType": "lnsDatatable",
                     "state": {
                         "visualization": {
@@ -575,7 +576,10 @@ class KibanaDashboardBuilder:
                             "rowHeight": "auto",
                         },
                         "query": {
-                            "query": "baseSeverity: CRITICAL OR baseSeverity: HIGH",
+                            "query": (
+                                "baseSeverity: CRITICAL OR baseSeverity: HIGH OR "
+                                "isKev: true OR epssScore >= 75"
+                            ),
                             "language": "kuery",
                         },
                         "filters": [],
@@ -673,7 +677,7 @@ class KibanaDashboardBuilder:
                         }
                     ],
                 },
-                "title": "Recent High-Risk CVEs",
+                "title": "Priority CVEs",
             },
         }
 
@@ -690,13 +694,37 @@ class KibanaDashboardBuilder:
         # Build all panels
         panels = [
             # Row 1: Key Metrics
-            self._create_metric_panel("total-cves", "Total CVEs", "", "#6092C0", 0, 0),
             self._create_metric_panel(
-                "critical-cves", "Critical Severity", "baseSeverity: CRITICAL", "#E7664C", 12, 0
+                panel_id="total-cves",
+                title="Total CVEs",
+                query="",
+                color="#6092C0",
+                grid_x=0,
+                grid_y=0,
             ),
-            self._create_metric_panel("kev-cves", "In CISA KEV", "isKev: true", "#DA8B45", 24, 0),
             self._create_metric_panel(
-                "high-epss", "High EPSS (>0.5)", "epssScore > 0.5", "#D36086", 36, 0
+                panel_id="critical-cves",
+                title="Critical Severity",
+                query="baseSeverity: CRITICAL",
+                color="#E7664C",
+                grid_x=12,
+                grid_y=0,
+            ),
+            self._create_metric_panel(
+                panel_id="kev-cves",
+                title="In CISA KEV",
+                query="isKev: true",
+                color="#DA8B45",
+                grid_x=24,
+                grid_y=0,
+            ),
+            self._create_metric_panel(
+                panel_id="high-epss",
+                title="EPSS >75",
+                query="epssScore > 75",
+                color="#D36086",
+                grid_x=36,
+                grid_y=0,
             ),
             # Row 2: Charts
             self._create_severity_pie_panel(),

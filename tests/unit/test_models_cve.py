@@ -128,6 +128,24 @@ class TestCVE:
         assert doc["cvssV3BaseScore"] == 9.8
         assert "CWE-79" in doc["cweIds"]
 
+    def test_to_elasticsearch_doc_includes_enrichment(self, sample_cve):
+        """Test that EPSS and KEV enrichment is persisted in the document."""
+        sample_cve.epss_score = 55.1
+        sample_cve.epss_percentile = 44.08
+        sample_cve.is_kev = True
+        sample_cve.kev_date_added = datetime(2024, 1, 10, tzinfo=UTC)
+        sample_cve.kev_due_date = datetime(2024, 1, 31, tzinfo=UTC)
+        sample_cve.kev_ransomware_use = True
+
+        doc = sample_cve.to_elasticsearch_doc()
+
+        assert doc["epssScore"] == 55.1
+        assert doc["epssPercentile"] == 44.08
+        assert doc["isKev"] is True
+        assert doc["kevDateAdded"] == "2024-01-10T00:00:00+00:00"
+        assert doc["kevDueDate"] == "2024-01-31T00:00:00+00:00"
+        assert doc["kevRansomwareUse"] is True
+
     def test_cve_without_cvss(self):
         """Test CVE without any CVSS scores."""
         cve = CVE(

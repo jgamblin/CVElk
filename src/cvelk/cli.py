@@ -231,12 +231,13 @@ def sync_nvd(
     console.print("\n[green]✓[/] NVD Sync complete!")
 
 
-async def _run_sync_v5(  # noqa: PLR0915
+async def _run_sync_v5(  # noqa: PLR0915, PLR0917
     settings: "Settings",
     years: list[int] | None,
     skip_epss: bool,
     skip_kev: bool,
     batch_size: int,
+    incremental: bool = False,
 ) -> None:
     """Execute the CVE List V5 sync operation."""
     with Progress(
@@ -295,7 +296,7 @@ async def _run_sync_v5(  # noqa: PLR0915
         indexed = 0
         errors = 0
 
-        for cve in v5_service.iter_cves():
+        for cve in v5_service.iter_cves(changed_only=incremental):
             # Skip non-published CVEs
             if cve.vuln_status not in ["Published", "PUBLISHED"]:
                 continue
@@ -338,6 +339,9 @@ async def _run_sync_v5(  # noqa: PLR0915
             description=f"[green]✓[/] Indexed {indexed:,} CVEs ({errors} errors)",
         )
 
+        if errors == 0:
+            v5_service.save_sync_commit()
+
         es_service.close()
 
 
@@ -373,6 +377,13 @@ def sync_v5(
             help="Number of CVEs to index per batch.",
         ),
     ] = 1000,
+    incremental: Annotated[
+        bool,
+        typer.Option(
+            "--incremental",
+            help="Only process CVE files changed since the last successful sync.",
+        ),
+    ] = False,
 ) -> None:
     """Sync CVE data from the official CVE List V5 repository.
 
@@ -394,7 +405,7 @@ def sync_v5(
         console.print(f"[dim]Years filter: {years}[/]")
     console.print()
 
-    asyncio.run(_run_sync_v5(settings, years, skip_epss, skip_kev, batch_size))
+    asyncio.run(_run_sync_v5(settings, years, skip_epss, skip_kev, batch_size, incremental))
     console.print("\n[green]✓[/] CVE V5 Sync complete!")
 
 
@@ -602,6 +613,9 @@ async def _run_full_sync(  # noqa: PLR0912, PLR0915
             description=f"[green]✓[/] Indexed {indexed:,} CVEs ({errors} errors)",
         )
 
+        if errors == 0:
+            v5_service.save_sync_commit()
+
         es_service.close()
 
 
@@ -704,6 +718,11 @@ def stats() -> None:
 
     stats = es_service.get_stats()
 
+    if "error" in stats:
+        console.print(f"[red]✗[/] Failed to get Elasticsearch statistics: {stats['error']}")
+        es_service.close()
+        raise typer.Exit(1)
+
     table = Table(title="CVElk Statistics", border_style="blue")
     table.add_column("Metric", style="cyan")
     table.add_column("Value", style="green")
@@ -800,8 +819,7 @@ def config() -> None:
     table.add_row("[bold]NVD[/]", "")
     table.add_row("  API Key", "Set" if settings.nvd.api_key else "Not set")
     # Rate limit is 50 req/30s with API key, 5 req/30s without
-    effective_rate = 50 if settings.nvd.api_key else 5
-    table.add_row("  Rate Limit", f"{effective_rate} req/30s")
+    table.add_row("  Rate Limit", f"{settings.nvd.effective_rate_limit} req/30s")
 
     console.print(table)
 
@@ -870,7 +888,21 @@ def watch(
         console.print(f"\n[bold cyan]═══ Update #{update_count} at {timestamp} ═══[/]")
 
         try:
-            asyncio.run(_run_full_sync(settings, skip_nvd, skip_epss, skip_kev, batch_size=1000))
+            if skip_nvd:
+                asyncio.run(
+                    _run_sync_v5(
+                        settings,
+                        settings.cve_list_v5.years,
+                        skip_epss,
+                        skip_kev,
+                        batch_size=1000,
+                        incremental=True,
+                    )
+                )
+            else:
+                asyncio.run(
+                    _run_full_sync(settings, skip_nvd, skip_epss, skip_kev, batch_size=1000)
+                )
             console.print(f"[green]✓[/] Update complete. Next update in {interval} minutes.")
         except Exception as e:
             console.print(f"[red]✗[/] Update failed: {e}")

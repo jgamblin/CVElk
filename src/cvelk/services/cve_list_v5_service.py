@@ -41,6 +41,7 @@ class CVEListV5Service:
         self.repo_url = settings.cve_list_v5.repo_url
         self.use_shallow = settings.cve_list_v5.use_shallow_clone
         self.years_filter = settings.cve_list_v5.years
+        self.state_path = settings.data_dir / "cvelist-v5-sync.json"
 
     def clone_or_update(self) -> bool:
         """Clone the CVE List V5 repository or update if it exists.
@@ -128,7 +129,7 @@ class CVEListV5Service:
             logger.error(f"Unexpected error updating repository: {e}")
             return False
 
-    def iter_cve_files(self) -> Generator[Path, None, None]:
+    def iter_cve_files(self, changed_only: bool = False) -> Generator[Path, None, None]:
         """Iterate over all CVE JSON files in the repository.
 
         Yields:
@@ -138,6 +139,12 @@ class CVEListV5Service:
         if not cves_dir.exists():
             logger.error(f"CVE directory not found: {cves_dir}")
             return
+
+        if changed_only:
+            changed_files = self._changed_cve_files()
+            if changed_files is not None:
+                yield from changed_files
+                return
 
         # Filter by years if specified
         year_dirs = sorted(cves_dir.iterdir())
@@ -162,6 +169,79 @@ class CVEListV5Service:
 
                 # Yield all JSON files in this range directory
                 yield from sorted(range_dir.glob("CVE-*.json"))
+
+    def _changed_cve_files(self) -> list[Path] | None:
+        """Return CVE files changed since the last successful sync.
+
+        Returns ``None`` when no usable checkpoint exists, which tells callers
+        to fall back to a complete scan.
+        """
+        previous_commit = self.load_sync_commit()
+        if not previous_commit:
+            return None
+
+        try:
+            result = subprocess.run(
+                ["git", "diff", "--name-only", previous_commit, "HEAD", "--", "cves"],
+                cwd=self.repo_path,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+        except (OSError, subprocess.CalledProcessError) as e:
+            logger.warning(f"Unable to calculate changed CVE files: {e}")
+            return None
+
+        changed_files: list[Path] = []
+        for name in result.stdout.splitlines():
+            path = self.repo_path / name
+            if path.suffix != ".json" or not path.exists():
+                continue
+            parts = path.relative_to(self.repo_path).parts
+            if len(parts) >= 2 and self.years_filter:
+                try:
+                    if int(parts[1]) not in self.years_filter:
+                        continue
+                except ValueError:
+                    continue
+            changed_files.append(path)
+        return sorted(changed_files)
+
+    def current_commit(self) -> str | None:
+        """Return the current repository commit hash."""
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=self.repo_path,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+        except (OSError, subprocess.CalledProcessError):
+            return None
+        return result.stdout.strip() or None
+
+    def load_sync_commit(self) -> str | None:
+        """Load the commit recorded by the last successful sync."""
+        try:
+            data = json.loads(self.state_path.read_text())
+        except (FileNotFoundError, json.JSONDecodeError, OSError):
+            return None
+        commit = data.get("commit")
+        return commit if isinstance(commit, str) else None
+
+    def save_sync_commit(self) -> bool:
+        """Record the current repository commit after a successful sync."""
+        commit = self.current_commit()
+        if not commit:
+            return False
+        try:
+            self.state_path.parent.mkdir(parents=True, exist_ok=True)
+            self.state_path.write_text(json.dumps({"commit": commit}) + "\n")
+        except OSError as e:
+            logger.warning(f"Unable to save sync checkpoint: {e}")
+            return False
+        return True
 
     def count_cves(self) -> int:
         """Count total CVE files in the repository.
@@ -194,13 +274,13 @@ class CVEListV5Service:
             logger.error(f"Failed to parse {file_path}: {e}")
             return None
 
-    def iter_cves(self) -> Generator[CVE, None, None]:
+    def iter_cves(self, changed_only: bool = False) -> Generator[CVE, None, None]:
         """Iterate over all CVEs in the repository.
 
         Yields:
             Parsed CVE objects.
         """
-        for file_path in self.iter_cve_files():
+        for file_path in self.iter_cve_files(changed_only=changed_only):
             cve = self.parse_cve_file(file_path)
             if cve:
                 yield cve

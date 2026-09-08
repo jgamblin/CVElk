@@ -7,7 +7,7 @@ name: cvelk-dev
 services:
   # Elasticsearch 8.x - development mode (no security)
   elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.17.0
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.5.3
     container_name: cvelk-es-dev
     environment:
       - node.name=es01
@@ -34,7 +34,7 @@ services:
 
   # Kibana 8.x - development mode
   kibana:
-    image: docker.elastic.co/kibana/kibana:8.17.0
+    image: docker.elastic.co/kibana/kibana:9.5.3
     container_name: cvelk-kb-dev
     depends_on:
       elasticsearch:

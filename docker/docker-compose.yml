@@ -6,14 +6,17 @@ name: cvelk
 services:
   # Setup container - generates certificates and credentials
   setup:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.17.0
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.5.3
     container_name: cvelk-setup
     volumes:
       - certs:/usr/share/elasticsearch/config/certs
     user: "0"
+    environment:
+      ELASTIC_PASSWORD: ${ELASTIC_PASSWORD:?Set ELASTIC_PASSWORD in docker/.env}
+      KIBANA_PASSWORD: ${KIBANA_PASSWORD:?Set KIBANA_PASSWORD in docker/.env}
     command: >
       bash -c '
-        if [ x${ELASTIC_PASSWORD} == x ]; then
+        if [ x$${ELASTIC_PASSWORD} == x ]; then
           echo "Set the ELASTIC_PASSWORD environment variable in the .env file";
           exit 1;
         fi;
@@ -49,7 +52,7 @@ services:
         echo "Waiting for Elasticsearch availability";
         until curl -s --cacert config/certs/ca/ca.crt https://es01:9200 | grep -q "missing authentication credentials"; do sleep 30; done;
         echo "Setting kibana_system password";
-        until curl -s -X POST --cacert config/certs/ca/ca.crt -u "elastic:${ELASTIC_PASSWORD}" -H "Content-Type: application/json" https://es01:9200/_security/user/kibana_system/_password -d "{\"password\":\"${KIBANA_PASSWORD}\"}" | grep -q "^{}"; do sleep 10; done;
+        until curl -s -X POST --cacert config/certs/ca/ca.crt -u "elastic:$${ELASTIC_PASSWORD}" -H "Content-Type: application/json" https://es01:9200/_security/user/kibana_system/_password -d "{\"password\":\"$${KIBANA_PASSWORD}\"}" | grep -q "^{}"; do sleep 10; done;
         echo "All done!";
       '
     healthcheck:
@@ -62,7 +65,7 @@ services:
 
   # Elasticsearch node
   es01:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.17.0
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.5.3
     container_name: cvelk-es01
     depends_on:
       setup:
@@ -71,7 +74,7 @@ services:
       - node.name=es01
       - cluster.name=cvelk-cluster
       - discovery.type=single-node
-      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD:?Set ELASTIC_PASSWORD in docker/.env}
       - bootstrap.memory_lock=true
       - xpack.security.enabled=true
       - xpack.security.http.ssl.enabled=true
@@ -108,7 +111,7 @@ services:
 
   # Kibana
   kib01:
-    image: docker.elastic.co/kibana/kibana:8.17.0
+    image: docker.elastic.co/kibana/kibana:9.5.3
     container_name: cvelk-kib01
     depends_on:
       es01:
@@ -117,11 +120,11 @@ services:
       - SERVERNAME=kibana
       - ELASTICSEARCH_HOSTS=https://es01:9200
       - ELASTICSEARCH_USERNAME=kibana_system
-      - ELASTICSEARCH_PASSWORD=${KIBANA_PASSWORD}
+      - ELASTICSEARCH_PASSWORD=${KIBANA_PASSWORD:?Set KIBANA_PASSWORD in docker/.env}
       - ELASTICSEARCH_SSL_CERTIFICATEAUTHORITIES=config/certs/ca/ca.crt
-      - XPACK_SECURITY_ENCRYPTIONKEY=${ENCRYPTION_KEY:-a]V@e!K#fLq$nMp2sRtUvWxYz1234567}
-      - XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY=${ENCRYPTION_KEY:-a]V@e!K#fLq$nMp2sRtUvWxYz1234567}
-      - XPACK_REPORTING_ENCRYPTIONKEY=${ENCRYPTION_KEY:-a]V@e!K#fLq$nMp2sRtUvWxYz1234567}
+      - XPACK_SECURITY_ENCRYPTIONKEY=${ENCRYPTION_KEY:?Set ENCRYPTION_KEY in docker/.env}
+      - XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY=${ENCRYPTION_KEY:?Set ENCRYPTION_KEY in docker/.env}
+      - XPACK_REPORTING_ENCRYPTIONKEY=${ENCRYPTION_KEY:?Set ENCRYPTION_KEY in docker/.env}
     mem_limit: ${KB_MEM_LIMIT:-1073741824}
     volumes:
       - certs:/usr/share/kibana/config/certs

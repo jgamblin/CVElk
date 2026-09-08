@@ -2,15 +2,15 @@
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Elasticsearch 8.17](https://img.shields.io/badge/Elasticsearch-8.17-005571.svg)](https://www.elastic.co/)
+[![Elasticsearch 9.5](https://img.shields.io/badge/Elasticsearch-9.5-005571.svg)](https://www.elastic.co/)
 
-A modern vulnerability intelligence platform that aggregates CVE data from multiple authoritative sources into Elasticsearch with a beautiful Kibana dashboard. **Auto-updates every 15 minutes** to keep your data fresh.
+A modern vulnerability intelligence platform that aggregates CVE data from multiple authoritative sources into Elasticsearch with a Kibana dashboard. **Auto-updates every 15 minutes** to keep your data fresh.
 
 ![CVElk Dashboard](Images/Dashboard.png)
 
 ## ✨ Features
 
-- **300,000+ CVEs** indexed from multiple authoritative sources
+- **387,000+ CVEs** available from the CVE List V5 repository
 - **Auto-Updating** - Watch mode syncs every 15 minutes automatically
 - **16-Panel Kibana Dashboard** with real-time vulnerability intelligence
 - **4 Data Sources** - CVE List V5, NVD, EPSS, and CISA KEV
@@ -20,10 +20,12 @@ A modern vulnerability intelligence platform that aggregates CVE data from multi
 ## 🚀 Quick Start
 
 ```bash
-# 1. Start Elasticsearch and Kibana
-docker compose up -d
+# 1. Configure and start secure Elasticsearch and Kibana
+cp docker/.env.example docker/.env
+# Edit docker/.env and set strong passwords and a 32+ character encryption key.
+cd docker && docker compose up -d && cd ..
 
-# 2. Sync CVE data (this takes a while - 300K+ CVEs)
+# 2. Sync CVE data (the full sync can take several hours without an NVD API key)
 python -m cvelk sync
 
 # 3. Setup the dashboard
@@ -48,7 +50,9 @@ cvelk watch --interval 5
 cvelk watch --no-skip-nvd
 ```
 
-The watch mode runs continuously, pulling the latest CVE data from all sources.
+The watch mode runs continuously. With NVD enrichment skipped, it uses incremental
+CVE List V5 synchronization after the first successful run. A full NVD crawl is
+rate-limited unless `NVD_API_KEY` is configured.
 
 ## 📊 Data Sources
 
@@ -56,10 +60,10 @@ CVElk aggregates vulnerability data from four authoritative sources:
 
 | Source | Description | Records | Update Frequency |
 |--------|-------------|---------|------------------|
-| [CVE List V5](https://github.com/CVEProject/cvelistV5) | Official CVE Project repository - primary source for CVE records | ~300,000 CVEs | **Every 7 minutes** |
+| [CVE List V5](https://github.com/CVEProject/cvelistV5) | Official CVE Project repository - primary source for CVE records | ~387,000 CVEs | **Every 7 minutes** |
 | [NVD](https://nvd.nist.gov/) | NIST National Vulnerability Database - CVSS scores, CWEs, references | ~320,000 CVEs | Real-time API |
-| [EPSS](https://www.first.org/epss/) | Exploit Prediction Scoring System - probability of exploitation | ~300,000 scores | **Daily** |
-| [CISA KEV](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) | Known Exploited Vulnerabilities - actively exploited CVEs | ~1,500 CVEs | As needed |
+| [EPSS](https://www.first.org/epss/) | Exploit Prediction Scoring System - probability of exploitation | ~369,000 scores | **Daily** |
+| [CISA KEV](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) | Known Exploited Vulnerabilities - actively exploited CVEs | ~1,700 CVEs | As needed |
 
 > **Note**: The CVE List V5 is the authoritative source maintained by the CVE Project and updates every 7 minutes. CVElk's `watch` command syncs every 15 minutes by default to capture all updates.
 
@@ -87,7 +91,7 @@ The CVElk dashboard provides comprehensive vulnerability intelligence:
 | **High** | CVEs with CVSS score 7.0-8.9 |
 | **Medium** | CVEs with CVSS score 4.0-6.9 |
 | **In CISA KEV** | Known exploited vulnerabilities |
-| **High EPSS (>0.75)** | CVEs with >75% exploitation probability |
+| **High EPSS (>75)** | CVEs with >75% exploitation probability |
 | **CVEs Over Time** | Stacked bar chart by severity over time |
 | **Severity Distribution** | Donut chart breakdown |
 | **Top Weakness Types (CWE)** | Most common vulnerability categories |
@@ -115,6 +119,9 @@ cvelk watch --interval 30     # Every 30 minutes
 # Sync specific years only
 cvelk sync --years 2024 --years 2023
 
+# Process only CVE files changed since the last successful V5 sync
+cvelk sync-v5 --incremental
+
 # Skip NVD enrichment (much faster)
 cvelk sync --skip-nvd
 
@@ -137,23 +144,29 @@ cvelk config
 
 ## ⚙️ Configuration
 
-Configure via environment variables or `.env` file:
+Configure via environment variables or `.env` file. For the secure Docker
+deployment, copy `docker/.env.example` to `docker/.env` and set the required
+passwords and `ENCRYPTION_KEY`. The development Compose file does not require
+credentials and is intended for local testing only.
 
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `ELASTICSEARCH_HOST` | Elasticsearch URL | `http://localhost:9200` |
 | `KIBANA_HOST` | Kibana URL | `http://localhost:5601` |
-| `NVD_API_KEY` | NVD API key (10x faster sync) | - |
+| `NVD_API_KEY` | NVD API key (higher NVD rate limit) | - |
 | `LOG_LEVEL` | Logging level | `INFO` |
 
 ### NVD API Key (Recommended)
 
-Get a free API key for 10x faster NVD fetching:
+Get a free API key for substantially faster NVD fetching:
 
 1. Visit [NVD API Key Request](https://nvd.nist.gov/developers/request-an-api-key)
 2. Set `NVD_API_KEY=your-key` in your environment
 
 Without key: 5 requests/30 seconds | With key: 50 requests/30 seconds
+
+EPSS values stored in Elasticsearch use percentages from `0` to `100`.
+For example, `75` means a 75% exploitation probability.
 
 ## 🏗️ Architecture
 
@@ -163,7 +176,7 @@ Without key: 5 requests/30 seconds | With key: 50 requests/30 seconds
 ├─────────────────┬─────────────────┬───────────────┬─────────────┤
 │  CVE List V5    │    NVD API      │    EPSS       │  CISA KEV   │
 │   (Primary)     │  (Enrichment)   │   (Scores)    │  (Exploited)│
-│  ~300K CVEs     │  ~320K CVEs     │  ~300K scores │  ~1.5K CVEs │
+│  ~387K CVEs     │  ~387K CVEs     │  ~369K scores │  ~1.7K CVEs │
 └────────┬────────┴────────┬────────┴───────┬───────┴──────┬──────┘
          │                 │                │              │
          └─────────────────┴────────────────┴──────────────┘
@@ -175,14 +188,14 @@ Without key: 5 requests/30 seconds | With key: 50 requests/30 seconds
                                    │
                       ┌────────────▼────────────┐
                       │     Elasticsearch       │
-                      │        8.17.0           │
-                      │    303,893 documents    │
-                      │       183.7 MB          │
+                      │        9.5.3           │
+                      │    CVE documents    │
+                      │       varies by sync          │
                       └────────────┬────────────┘
                                    │
                       ┌────────────▼────────────┐
                       │        Kibana           │
-                      │        8.17.0           │
+                      │        9.5.3           │
                       │    16-Panel Dashboard   │
                       └─────────────────────────┘
 ```

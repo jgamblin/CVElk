@@ -103,10 +103,10 @@ docker-down-secure:
 # =============================================================================
 
 sync:
-	cvelk sync --days 7
+	cvelk sync --skip-nvd
 
 sync-full:
-	cvelk sync --full
+	cvelk sync
 
 setup:
 	cvelk setup
