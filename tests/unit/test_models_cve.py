@@ -155,6 +155,149 @@ class TestCVE:
             description="Test CVE without CVSS",
         )
 
-        assert cve.base_score == 0.0
-        assert cve.severity == "NONE"
+        assert cve.base_score is None
+        assert cve.severity is None
         assert cve.primary_cvss is None
+
+        doc = cve.to_elasticsearch_doc()
+        assert doc["baseScore"] is None
+        assert doc["baseSeverity"] is None
+
+    def test_is_rejected(self, sample_cve):
+        """Rejected status is detected regardless of source casing."""
+        assert sample_cve.is_rejected is False
+        sample_cve.vuln_status = "Rejected"
+        assert sample_cve.is_rejected is True
+        sample_cve.vuln_status = "REJECTED"
+        assert sample_cve.is_rejected is True
+
+
+class TestWeaknessNormalization:
+    """Tests for CWE ID normalization."""
+
+    def test_keeps_nvd_placeholders(self):
+        """NVD placeholder values are not given a second CWE- prefix."""
+        assert Weakness(cwe_id="NVD-CWE-Other").cwe_id == "NVD-CWE-Other"
+        assert Weakness(cwe_id="NVD-CWE-noinfo").cwe_id == "NVD-CWE-noinfo"
+
+    def test_normalizes_cwe_ids(self):
+        """CWE IDs are upper-cased and bare numbers get the CWE- prefix."""
+        assert Weakness(cwe_id="cwe-79").cwe_id == "CWE-79"
+        assert Weakness(cwe_id="79").cwe_id == "CWE-79"
+        assert Weakness(cwe_id="").cwe_id == "CWE-UNKNOWN"
+
+
+def _v5_record(state="PUBLISHED", cna=None, adp=None):
+    """Build a minimal CVE JSON 5.x record."""
+    return {
+        "cveMetadata": {
+            "cveId": "CVE-2024-0001",
+            "state": state,
+            "assignerShortName": "example",
+            "datePublished": "2024-01-15T10:30:00.000Z",
+            "dateUpdated": "2024-02-01T08:00:00.000Z",
+        },
+        "containers": {"cna": cna or {}, "adp": adp or []},
+    }
+
+
+V31_DATA = {
+    "version": "3.1",
+    "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+    "attackVector": "NETWORK",
+    "attackComplexity": "LOW",
+    "privilegesRequired": "NONE",
+    "userInteraction": "NONE",
+    "scope": "UNCHANGED",
+    "confidentialityImpact": "HIGH",
+    "integrityImpact": "HIGH",
+    "availabilityImpact": "HIGH",
+    "baseScore": 9.8,
+    "baseSeverity": "CRITICAL",
+}
+
+
+class TestFromCVEV5:
+    """Tests for parsing CVE List V5 records."""
+
+    def test_published_record_with_cna_metrics(self):
+        """CNA description, CVSS, CWEs and references are parsed."""
+        cve = CVE.from_cve_v5(
+            _v5_record(
+                cna={
+                    "descriptions": [{"lang": "en-US", "value": "Remote code execution."}],
+                    "metrics": [
+                        {"cvssV3_1": V31_DATA},
+                        {"cvssV4_0": {"vectorString": "CVSS:4.0/AV:N", "baseScore": 9.3}},
+                    ],
+                    "problemTypes": [{"descriptions": [{"cweId": "CWE-78"}]}],
+                    "references": [{"url": "https://example.com/a"}, {"url": ""}],
+                }
+            )
+        )
+
+        assert cve.vuln_status == "Published"
+        assert cve.description == "Remote code execution."
+        assert cve.published == datetime(2024, 1, 15, 10, 30, tzinfo=UTC)
+        assert cve.last_modified == datetime(2024, 2, 1, 8, 0, tzinfo=UTC)
+        assert cve.cvss_v3 is not None
+        assert cve.cvss_v3.version == CVSSVersion.V31
+        assert cve.cvss_v3.attack_vector == AttackVector.NETWORK
+        assert cve.cvss_v4 is not None
+        assert cve.cvss_v4.base_score == 9.3
+        assert cve.cvss_v4.base_severity == Severity.NONE  # missing severity defaults
+        assert [w.cwe_id for w in cve.weaknesses] == ["CWE-78"]
+        assert [r.url for r in cve.references] == ["https://example.com/a"]
+
+    def test_adp_fills_missing_cna_data(self):
+        """ADP containers supply CVSS, CWEs and extra references the CNA lacks."""
+        cve = CVE.from_cve_v5(
+            _v5_record(
+                cna={
+                    "descriptions": [{"lang": "en", "value": "Bug."}],
+                    "references": [{"url": "https://example.com/a"}],
+                },
+                adp=[
+                    {
+                        "metrics": [{"cvssV3_0": {**V31_DATA, "version": "3.0"}}],
+                        "problemTypes": [{"descriptions": [{"cweId": "CWE-79"}]}],
+                        "references": [
+                            {"url": "https://example.com/a"},
+                            {"url": "https://example.com/b"},
+                        ],
+                    }
+                ],
+            )
+        )
+
+        assert cve.cvss_v3 is not None
+        assert cve.cvss_v3.version == CVSSVersion.V30
+        assert cve.primary_cwe == "CWE-79"
+        assert [r.url for r in cve.references] == [
+            "https://example.com/a",
+            "https://example.com/b",
+        ]
+
+    def test_unknown_severity_falls_back_to_none(self):
+        """An unrecognized severity does not make the whole record fail to parse."""
+        cve = CVE.from_cve_v5(
+            _v5_record(cna={"metrics": [{"cvssV3_1": {**V31_DATA, "baseSeverity": "Severe"}}]})
+        )
+
+        assert cve.cvss_v3 is not None
+        assert cve.cvss_v3.base_severity == Severity.NONE
+
+    def test_rejected_record(self):
+        """Rejected records keep their state so the sync can remove them."""
+        cve = CVE.from_cve_v5(_v5_record(state="REJECTED"))
+
+        assert cve.vuln_status == "REJECTED"
+        assert cve.is_rejected is True
+
+    def test_v5_and_nvd_v3_parse_identically(self):
+        """V5 and NVD CVSS v3 objects share one builder and produce the same metrics."""
+        v5 = CVE.from_cve_v5(_v5_record(cna={"metrics": [{"cvssV3_1": V31_DATA}]}))
+        nvd = CVSSMetrics.from_nvd_v3({"cvssData": V31_DATA})
+
+        assert v5.cvss_v3 == nvd
+        assert nvd.attack_complexity == AttackComplexity.LOW

@@ -1,6 +1,9 @@
 """Tests for EPSS data models and service."""
 
+from datetime import date
+
 from cvelk.models.epss import EPSSData, EPSSScore
+from cvelk.services.epss_service import EPSSService
 
 
 class TestEPSSScore:
@@ -108,3 +111,41 @@ class TestEPSSData:
 
         assert sample_cve.epss_score == 95.432
         assert sample_cve.epss_percentile == 99.12
+
+
+class TestEPSSServiceParsing:
+    """Tests for parsing the EPSS CSV feed."""
+
+    def test_parses_current_header_format(self, mock_settings):
+        """The current header carries a full timestamp with no space after '#'."""
+        content = (
+            "#model_version:v2025.03.14,score_date:2026-10-24T12:03:08Z\n"
+            "cve,epss,percentile\n"
+            "CVE-2024-0001,0.5,0.9\n"
+        )
+
+        data = EPSSService(mock_settings)._parse_csv(content)
+
+        assert data.model_version == "v2025.03.14"
+        assert data.score_date == date(2026, 10, 24)
+        assert data.scores["CVE-2024-0001"].score_date == date(2026, 10, 24)
+
+    def test_parses_legacy_header_format(self, mock_settings, sample_epss_csv):
+        """Older files used a plain date and a space after '#'."""
+        data = EPSSService(mock_settings)._parse_csv(sample_epss_csv)
+
+        assert data.model_version == "v2024.01.01"
+        assert data.score_date == date(2024, 1, 15)
+        assert data.total_count == 3
+
+    def test_es_fields_match_indexed_document(self, sample_cve):
+        """Partial updates write the same values as a full index of the CVE."""
+        score = EPSSScore(cve_id=sample_cve.cve_id, score=0.95432, percentile=0.99123)
+        EPSSData(scores={score.cve_id: score}).enrich_cve(sample_cve)
+
+        doc = sample_cve.to_elasticsearch_doc()
+
+        assert score.to_es_fields() == {
+            "epssScore": doc["epssScore"],
+            "epssPercentile": doc["epssPercentile"],
+        }

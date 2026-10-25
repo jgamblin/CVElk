@@ -45,6 +45,13 @@ class EPSSScore(BaseModel):
         """Get EPSS percentile as a percentage (0-100)."""
         return round(self.percentile * 100, 2)
 
+    def to_es_fields(self) -> dict[str, float]:
+        """Elasticsearch document fields for this score (stored as percentages)."""
+        return {
+            "epssScore": self.score_percentage,
+            "epssPercentile": self.percentile_percentage,
+        }
+
     @field_validator("cve_id", mode="before")
     @classmethod
     def normalize_cve_id(cls, v: str) -> str:

@@ -1,13 +1,13 @@
 # CVElk Development Docker Compose
 # Simplified setup without TLS for local development
-# Using Elasticsearch 8.x for stable visualization APIs
+# Elastic Stack 9.x without security, for local development only
 
 name: cvelk-dev
 
 services:
-  # Elasticsearch 8.x - development mode (no security)
+  # Elasticsearch - development mode (no security)
   elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:9.5.3
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.5.5
     container_name: cvelk-es-dev
     environment:
       - node.name=es01
@@ -32,9 +32,9 @@ services:
       timeout: 5s
       retries: 30
 
-  # Kibana 8.x - development mode
+  # Kibana - development mode
   kibana:
-    image: docker.elastic.co/kibana/kibana:9.5.3
+    image: docker.elastic.co/kibana/kibana:9.5.5
     container_name: cvelk-kb-dev
     depends_on:
       elasticsearch:

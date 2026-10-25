@@ -1,5 +1,5 @@
 # Build stage
-FROM python:3.12-slim AS builder
+FROM python:3.14-slim AS builder
 
 WORKDIR /app
 
@@ -17,12 +17,15 @@ COPY src/ ./src/
 RUN hatch build -t wheel
 
 # Runtime stage
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 ENV PIP_ROOT_USER_ACTION=ignore
 
-# Upgrade OS packages to pick up security fixes (e.g. liblzma5 CVE-2026-34743)
-RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
+# Upgrade OS packages to pick up security fixes (e.g. liblzma5 CVE-2026-34743).
+# git is required at run time: the CVE List V5 sync clones and pulls the repository.
+RUN apt-get update && apt-get upgrade -y \
+    && apt-get install -y --no-install-recommends git ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
 RUN useradd --create-home --shell /bin/bash cvelk

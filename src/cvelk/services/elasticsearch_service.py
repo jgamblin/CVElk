@@ -7,6 +7,7 @@ Handles all Elasticsearch operations including:
 - Query operations
 """
 
+from collections.abc import Iterable, Iterator
 from typing import Any
 
 from elasticsearch import Elasticsearch, helpers
@@ -65,6 +66,9 @@ CVE_INDEX_MAPPING = {
         "refresh_interval": "30s",
     },
 }
+
+# Number of individual bulk failures to log per bulk call
+MAX_LOGGED_BULK_ERRORS = 5
 
 
 class ElasticsearchService:
@@ -223,7 +227,7 @@ class ElasticsearchService:
         """
         index = index_name or self.settings.elasticsearch.index_name
 
-        def generate_actions() -> Any:
+        def generate_actions() -> Iterator[dict[str, Any]]:
             for cve in cves:
                 doc = cve.to_elasticsearch_doc()
                 doc_id = doc.pop("_id")
@@ -234,19 +238,109 @@ class ElasticsearchService:
                 }
 
         logger.info(f"Bulk indexing {len(cves)} CVEs to '{index}'")
+        success, error_count = self._run_bulk(generate_actions(), chunk_size)
+        logger.info(f"Bulk index complete: {success} success, {error_count} errors")
+        return success, error_count
 
-        success, errors = helpers.bulk(
+    def bulk_delete_cves(
+        self,
+        cve_ids: Iterable[str],
+        index_name: str | None = None,
+        chunk_size: int = 500,
+    ) -> tuple[int, int]:
+        """Delete CVE documents by ID. IDs that are not in the index are skipped.
+
+        Args:
+            cve_ids: CVE identifiers to delete.
+            index_name: Index name (defaults to settings value).
+            chunk_size: Number of documents per bulk request.
+
+        Returns:
+            Tuple of (deleted_count, error_count).
+        """
+        index = index_name or self.settings.elasticsearch.index_name
+        actions = ({"_op_type": "delete", "_index": index, "_id": cve_id} for cve_id in cve_ids)
+        return self._run_bulk(actions, chunk_size)
+
+    def bulk_update_cves(
+        self,
+        updates: Iterable[tuple[str, dict[str, Any]]],
+        index_name: str | None = None,
+        chunk_size: int = 1000,
+    ) -> tuple[int, int]:
+        """Apply partial updates to CVE documents. IDs not in the index are skipped.
+
+        Args:
+            updates: Pairs of (CVE ID, fields to set).
+            index_name: Index name (defaults to settings value).
+            chunk_size: Number of documents per bulk request.
+
+        Returns:
+            Tuple of (updated_count, error_count).
+        """
+        index = index_name or self.settings.elasticsearch.index_name
+        actions = (
+            {"_op_type": "update", "_index": index, "_id": cve_id, "doc": fields}
+            for cve_id, fields in updates
+        )
+        return self._run_bulk(actions, chunk_size)
+
+    def clear_kev_except(self, kev_ids: Iterable[str], index_name: str | None = None) -> int:
+        """Clear KEV fields on documents whose CVE is no longer in the KEV catalog.
+
+        Args:
+            kev_ids: CVE IDs currently in the KEV catalog.
+            index_name: Index name (defaults to settings value).
+
+        Returns:
+            Number of documents updated.
+        """
+        index = index_name or self.settings.elasticsearch.index_name
+        result = self.client.update_by_query(
+            index=index,
+            query={
+                "bool": {
+                    "filter": [{"term": {"isKev": True}}],
+                    "must_not": [{"terms": {"cveId": list(kev_ids)}}],
+                }
+            },
+            script={
+                "lang": "painless",
+                "source": (
+                    "ctx._source.isKev = false; ctx._source.kevDateAdded = null; "
+                    "ctx._source.kevDueDate = null; ctx._source.kevRansomwareUse = false;"
+                ),
+            },
+            conflicts="proceed",
+        )
+        return int(result.get("updated", 0))
+
+    def _run_bulk(self, actions: Iterable[dict[str, Any]], chunk_size: int) -> tuple[int, int]:
+        """Run bulk actions and count outcomes.
+
+        A 404 (document missing on delete or update) counts as neither a success
+        nor an error. The first few errors are logged so failures can be diagnosed.
+
+        Returns:
+            Tuple of (success_count, error_count).
+        """
+        success = errors = 0
+        for ok, item in helpers.streaming_bulk(
             self.client,
-            generate_actions(),
+            actions,
             chunk_size=chunk_size,
             raise_on_error=False,
-            stats_only=True,
-        )
-
-        # When stats_only=True, errors is always an int
-        error_count = errors if isinstance(errors, int) else len(errors)
-        logger.info(f"Bulk index complete: {success} success, {error_count} errors")
-        return int(success), error_count
+        ):
+            if ok:
+                success += 1
+                continue
+            result: dict[str, Any] = next(iter(item.values()), {})
+            if result.get("status") == 404:
+                continue
+            errors += 1
+            if errors <= MAX_LOGGED_BULK_ERRORS:
+                logger.warning(f"Bulk action failed for {result.get('_id')}: {result.get('error')}")
+        return success, errors
 
     def get_cve(self, cve_id: str, index_name: str | None = None) -> dict[str, Any] | None:
         """Get a CVE document by ID.
@@ -292,6 +386,24 @@ class ElasticsearchService:
         )
 
         return [hit["_source"] for hit in result["hits"]["hits"]]
+
+    def index_exists(self, index_name: str | None = None) -> bool:
+        """Check whether the CVE index exists.
+
+        Args:
+            index_name: Index name (defaults to settings value).
+        """
+        index = index_name or self.settings.elasticsearch.index_name
+        return bool(self.client.indices.exists(index=index))
+
+    def refresh(self, index_name: str | None = None) -> None:
+        """Make recent writes visible to searches without waiting for the refresh interval.
+
+        Args:
+            index_name: Index name (defaults to settings value).
+        """
+        index = index_name or self.settings.elasticsearch.index_name
+        self.client.indices.refresh(index=index)
 
     def count(self, index_name: str | None = None) -> int:
         """Get document count in index.

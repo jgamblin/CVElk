@@ -7,7 +7,6 @@ Handles Kibana operations including:
 """
 
 import base64
-import json
 from pathlib import Path
 from typing import Any
 
@@ -252,8 +251,10 @@ if (doc.containsKey('cvssV4BaseScore') && doc['cvssV4BaseScore'].size() > 0) {
     if (v == '3.1') { emit('CVSS 3.1'); }
     else if (v == '3.0') { emit('CVSS 3.0'); }
     else { emit('CVSS 3.x'); }
-} else {
+} else if (doc.containsKey('baseScore') && doc['baseScore'].size() > 0) {
     emit('CVSS 2.0');
+} else {
+    emit('Unscored');
 }
 """.strip()
 
@@ -330,292 +331,7 @@ if (doc.containsKey('cvssV4BaseScore') && doc['cvssV4BaseScore'].size() > 0) {
             return True
         return False
 
-    async def create_saved_search(
-        self,
-        *,
-        search_id: str,
-        title: str,
-        description: str,
-        query: str,
-        columns: list[str],
-        data_view_id: str = "cves-data-view",
-    ) -> bool:
-        """Create a saved search.
-
-        Args:
-            search_id: Unique ID for the search.
-            title: Search title.
-            description: Search description.
-            query: KQL query string.
-            columns: Columns to display.
-            data_view_id: Data view ID to use.
-
-        Returns:
-            True if successful.
-        """
-        url = self._url(f"/api/saved_objects/search/{search_id}?overwrite=true")
-
-        payload = {
-            "attributes": {
-                "title": title,
-                "description": description,
-                "columns": columns,
-                "sort": [["published", "desc"]],
-                "kibanaSavedObjectMeta": {
-                    "searchSourceJSON": json.dumps(
-                        {
-                            "index": data_view_id,
-                            "query": {"query": query, "language": "kuery"},
-                            "filter": [],
-                        }
-                    )
-                },
-            },
-            "references": [
-                {
-                    "id": data_view_id,
-                    "name": "kibanaSavedObjectMeta.searchSourceJSON.index",
-                    "type": "index-pattern",
-                }
-            ],
-        }
-
-        try:
-            async with httpx.AsyncClient(timeout=30) as client:
-                response = await client.post(url, headers=self._headers, json=payload)
-                if response.status_code in (200, 201):
-                    logger.info(f"Created saved search: {title}")
-                    return True
-                logger.error(f"Failed to create search {title}: {response.status_code}")
-                return False
-        except Exception as e:
-            logger.error(f"Failed to create search {title}: {e}")
-            return False
-
-    async def create_dashboard_programmatic(
-        self,
-        dashboard_id: str = "cvelk-main-dashboard",
-        data_view_id: str = "cves-data-view",
-    ) -> dict[str, Any]:
-        """Create dashboard programmatically using Saved Objects API.
-
-        This method creates the dashboard directly without importing NDJSON.
-
-        Args:
-            dashboard_id: Dashboard ID.
-            data_view_id: Data view ID.
-
-        Returns:
-            Result with dashboard URL.
-        """
-        result: dict[str, Any] = {}
-
-        # Create saved searches
-        searches: list[dict[str, Any]] = [
-            {
-                "id": "cvelk-high-risk-search",
-                "title": "High Risk CVEs",
-                "description": "CVEs with CVSS >= 9 OR in KEV OR EPSS >= 0.5",
-                "query": "baseScore >= 9 OR isKev: true OR epssScore >= 0.5",
-                "columns": [
-                    "cveId",
-                    "baseScore",
-                    "baseSeverity",
-                    "epssScore",
-                    "isKev",
-                    "description",
-                ],
-            },
-            {
-                "id": "cvelk-kev-search",
-                "title": "Known Exploited Vulnerabilities",
-                "description": "CVEs in CISA KEV catalog",
-                "query": "isKev: true",
-                "columns": [
-                    "cveId",
-                    "baseScore",
-                    "baseSeverity",
-                    "epssScore",
-                    "published",
-                ],
-            },
-            {
-                "id": "cvelk-high-epss-search",
-                "title": "High EPSS Risk",
-                "description": "CVEs with EPSS >= 0.5",
-                "query": "epssScore >= 0.5",
-                "columns": ["cveId", "baseScore", "epssScore", "isKev", "published"],
-            },
-            {
-                "id": "cvelk-recent-search",
-                "title": "Recent CVEs",
-                "description": "Most recently published CVEs",
-                "query": "",
-                "columns": [
-                    "cveId",
-                    "baseScore",
-                    "baseSeverity",
-                    "epssScore",
-                    "isKev",
-                    "published",
-                ],
-            },
-        ]
-
-        for search in searches:
-            await self.create_saved_search(
-                search_id=search["id"],
-                title=search["title"],
-                description=search["description"],
-                query=search["query"],
-                columns=search["columns"],
-                data_view_id=data_view_id,
-            )
-
-        # Dashboard markdown header
-        header_markdown = (
-            "# 🛡️ CVElk - Vulnerability Intelligence Dashboard\n\n"
-            "Real-time CVE data from **NVD 2.0 API**, enriched with "
-            "**EPSS** exploit prediction scores and **CISA KEV**.\n\n"
-            "| Metric | Description | Risk Level |\n"
-            "|--------|-------------|------------|\n"
-            "| **CVSS** | Vulnerability Scoring (0-10) | Critical: ≥9 |\n"
-            "| **EPSS** | Exploit probability in 30 days | High: ≥50% |\n"
-            "| **KEV** | Known Exploited Vulnerabilities | Critical |\n\n"
-            "Use the **time picker** and **search bar** to filter."
-        )
-
-        # Panel definitions
-        panels = [
-            {
-                "version": "9.0.0",
-                "type": "visualization",
-                "gridData": {"x": 0, "y": 0, "w": 48, "h": 7, "i": "header"},
-                "panelIndex": "header",
-                "embeddableConfig": {
-                    "savedVis": {
-                        "title": "",
-                        "type": "markdown",
-                        "params": {
-                            "fontSize": 12,
-                            "openLinksInNewTab": False,
-                            "markdown": header_markdown,
-                        },
-                        "data": {},
-                    }
-                },
-            },
-            {
-                "version": "9.0.0",
-                "type": "search",
-                "gridData": {"x": 0, "y": 7, "w": 48, "h": 12, "i": "high-risk"},
-                "panelIndex": "high-risk",
-                "panelRefName": "panel_high_risk",
-                "title": "🔴 High Risk CVEs (Critical CVSS ≥9, KEV, or EPSS ≥50%)",
-                "embeddableConfig": {"enhancements": {}},
-            },
-            {
-                "version": "9.0.0",
-                "type": "search",
-                "gridData": {"x": 0, "y": 19, "w": 24, "h": 12, "i": "kev"},
-                "panelIndex": "kev",
-                "panelRefName": "panel_kev",
-                "title": "⚠️ Known Exploited (CISA KEV)",
-                "embeddableConfig": {"enhancements": {}},
-            },
-            {
-                "version": "9.0.0",
-                "type": "search",
-                "gridData": {"x": 24, "y": 19, "w": 24, "h": 12, "i": "epss"},
-                "panelIndex": "epss",
-                "panelRefName": "panel_epss",
-                "title": "📊 High EPSS Risk (≥50% exploit probability)",
-                "embeddableConfig": {"enhancements": {}},
-            },
-            {
-                "version": "9.0.0",
-                "type": "search",
-                "gridData": {"x": 0, "y": 31, "w": 48, "h": 15, "i": "recent"},
-                "panelIndex": "recent",
-                "panelRefName": "panel_recent",
-                "title": "📅 Recent CVEs",
-                "embeddableConfig": {"enhancements": {}},
-            },
-        ]
-
-        dashboard_desc = (
-            "Comprehensive CVE dashboard with NVD data, EPSS risk scores, and CISA KEV status"
-        )
-
-        dashboard_payload = {
-            "attributes": {
-                "title": "CVElk - Vulnerability Intelligence",
-                "description": dashboard_desc,
-                "hits": 0,
-                "optionsJSON": json.dumps(
-                    {
-                        "useMargins": True,
-                        "syncColors": False,
-                        "syncCursor": True,
-                        "syncTooltips": False,
-                        "hidePanelTitles": False,
-                    }
-                ),
-                "panelsJSON": json.dumps(panels),
-                "timeRestore": True,
-                "timeTo": "now",
-                "timeFrom": "now-1y",
-                "version": 1,
-                "kibanaSavedObjectMeta": {
-                    "searchSourceJSON": json.dumps(
-                        {
-                            "query": {"query": "", "language": "kuery"},
-                            "filter": [],
-                        }
-                    )
-                },
-            },
-            "references": [
-                {
-                    "id": data_view_id,
-                    "name": "kibanaSavedObjectMeta.searchSourceJSON.index",
-                    "type": "index-pattern",
-                },
-                {"id": "cvelk-high-risk-search", "name": "panel_high_risk", "type": "search"},
-                {"id": "cvelk-kev-search", "name": "panel_kev", "type": "search"},
-                {"id": "cvelk-high-epss-search", "name": "panel_epss", "type": "search"},
-                {"id": "cvelk-recent-search", "name": "panel_recent", "type": "search"},
-            ],
-        }
-
-        url = self._url(f"/api/saved_objects/dashboard/{dashboard_id}?overwrite=true")
-
-        try:
-            async with httpx.AsyncClient(timeout=30) as client:
-                response = await client.post(url, headers=self._headers, json=dashboard_payload)
-                if response.status_code in (200, 201):
-                    logger.info(f"Dashboard created: {dashboard_id}")
-                    result["dashboard_id"] = dashboard_id
-                    result["dashboard_url"] = f"{self.base_url}/app/dashboards#/view/{dashboard_id}"
-                    result["success"] = True
-                else:
-                    logger.error(
-                        f"Failed to create dashboard: {response.status_code} - "
-                        f"{response.text[:200]}"
-                    )
-                    result["success"] = False
-                    result["error"] = response.text
-        except Exception as e:
-            logger.error(f"Failed to create dashboard: {e}")
-            result["success"] = False
-            result["error"] = str(e)
-
-        return result
-
-    async def setup_cvelk_dashboard(
-        self,
-        dashboard_path: str | Path | None = None,
-    ) -> dict[str, Any]:
+    async def setup_cvelk_dashboard(self, dashboard_path: str | Path) -> dict[str, Any]:
         """Set up the CVElk dashboard and data view.
 
         This method:
@@ -627,7 +343,7 @@ if (doc.containsKey('cvssV4BaseScore') && doc['cvssV4BaseScore'].size() > 0) {
             dashboard_path: Path to dashboard NDJSON file.
 
         Returns:
-            Setup result with dashboard URL.
+            Setup result, including ``dashboard_url`` when the import succeeded.
         """
         result: dict[str, Any] = {}
 
@@ -650,28 +366,20 @@ if (doc.containsKey('cvssV4BaseScore') && doc['cvssV4BaseScore'].size() > 0) {
         result["dark_theme"] = theme_result
 
         # Step 3: Import dashboard from NDJSON
-        if dashboard_path and await anyio.Path(dashboard_path).exists():
-            import_result = await self.import_saved_objects(dashboard_path)
-            result["import"] = import_result
+        import_result = await self.import_saved_objects(dashboard_path)
+        result["import"] = import_result
 
-            # Extract dashboard ID and set URL
-            if "successResults" in import_result:
-                for obj in import_result["successResults"]:
-                    if obj.get("type") == "dashboard":
-                        dashboard_id = obj.get("destinationId") or obj.get("id")
-                        result["dashboard_url"] = await self.get_dashboard_url(dashboard_id)
-                        await self.set_default_dashboard(dashboard_id)
-                        break
-            elif import_result.get("successCount", 0) > 0:
-                # Dashboard was imported but no successResults (overwrite case)
-                result["dashboard_url"] = await self.get_dashboard_url("cvelk-main-dashboard")
-                await self.set_default_dashboard("cvelk-main-dashboard")
-        else:
-            # Create dashboard programmatically if no NDJSON
-            logger.info("Creating dashboard programmatically...")
-            dashboard_result = await self.create_dashboard_programmatic()
-            result.update(dashboard_result)
-            if dashboard_result.get("success"):
-                await self.set_default_dashboard("cvelk-main-dashboard")
+        # Extract dashboard ID and set URL
+        if "successResults" in import_result:
+            for obj in import_result["successResults"]:
+                if obj.get("type") == "dashboard":
+                    dashboard_id = obj.get("destinationId") or obj.get("id")
+                    result["dashboard_url"] = await self.get_dashboard_url(dashboard_id)
+                    await self.set_default_dashboard(dashboard_id)
+                    break
+        elif import_result.get("successCount", 0) > 0:
+            # Dashboard was imported but no successResults (overwrite case)
+            result["dashboard_url"] = await self.get_dashboard_url("cvelk-main-dashboard")
+            await self.set_default_dashboard("cvelk-main-dashboard")
 
         return result
