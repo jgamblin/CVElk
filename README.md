@@ -25,6 +25,10 @@ cp docker/.env.example docker/.env
 # Edit docker/.env and set strong passwords and a 32+ character encryption key.
 cd docker && docker compose up -d && cd ..
 
+# Point the CLI at the same settings and trust the stack's self-signed CA
+ln -s docker/.env .env
+docker cp cvelk-es01:/usr/share/elasticsearch/config/certs/ca/ca.crt docker/certs/ca.crt
+
 # 2. Sync CVE data (the full sync can take several hours without an NVD API key)
 python -m cvelk sync
 
@@ -144,10 +148,12 @@ cvelk config
 
 ## ⚙️ Configuration
 
-Configure via environment variables or `.env` file. For the secure Docker
-deployment, copy `docker/.env.example` to `docker/.env` and set the required
-passwords and `ENCRYPTION_KEY`. The development Compose file does not require
-credentials and is intended for local testing only.
+Configure via environment variables or a `.env` file in the directory you run
+`cvelk` from. Environment variables take precedence over `.env`. For the secure
+Docker deployment, copy `docker/.env.example` to `docker/.env`, set the required
+passwords and `ENCRYPTION_KEY`, and symlink it to `.env` so the CLI uses the same
+values. The development Compose file does not require credentials and is intended
+for local testing only.
 
 | Variable | Description | Default |
 |----------|-------------|---------|
@@ -188,14 +194,14 @@ For example, `75` means a 75% exploitation probability.
                                    │
                       ┌────────────▼────────────┐
                       │     Elasticsearch       │
-                      │        9.5.3           │
+                      │        9.5.5           │
                       │    CVE documents    │
                       │       varies by sync          │
                       └────────────┬────────────┘
                                    │
                       ┌────────────▼────────────┐
                       │        Kibana           │
-                      │        9.5.3           │
+                      │        9.5.5           │
                       │    16-Panel Dashboard   │
                       └─────────────────────────┘
 ```

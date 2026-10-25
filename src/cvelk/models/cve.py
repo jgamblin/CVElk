@@ -2,9 +2,11 @@
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, TypeVar
 
 from pydantic import BaseModel, Field, field_validator
+
+_E = TypeVar("_E", bound=StrEnum)
 
 
 class CVSSVersion(StrEnum):
@@ -101,39 +103,67 @@ class CVSSMetrics(BaseModel):
         return round(float(v), 1)
 
     @classmethod
-    def from_nvd_v3(cls, data: dict[str, Any]) -> "CVSSMetrics":
-        """Create CVSSMetrics from NVD API v3.x CVSS data."""
-        cvss_data = data.get("cvssData", data)
+    def from_v3_data(
+        cls,
+        cvss_data: dict[str, Any],
+        *,
+        version: str | None = None,
+        exploitability_score: float | None = None,
+        impact_score: float | None = None,
+    ) -> "CVSSMetrics":
+        """Create CVSSMetrics from a CVSS v3.x object.
+
+        Accepts both the NVD ``cvssData`` object and the CVE JSON 5.x
+        ``cvssV3_0``/``cvssV3_1`` objects, which share the same field names.
+        """
         return cls(
-            version=CVSSVersion(cvss_data.get("version", "3.1")),
+            version=CVSSVersion(version or cvss_data.get("version", "3.1")),
             vector_string=cvss_data.get("vectorString", ""),
             base_score=cvss_data.get("baseScore", 0.0),
-            base_severity=Severity(cvss_data.get("baseSeverity", "NONE")),
-            attack_vector=AttackVector(cvss_data["attackVector"])
-            if cvss_data.get("attackVector")
-            else None,
-            attack_complexity=AttackComplexity(cvss_data["attackComplexity"])
-            if cvss_data.get("attackComplexity")
-            else None,
-            privileges_required=PrivilegesRequired(cvss_data["privilegesRequired"])
-            if cvss_data.get("privilegesRequired")
-            else None,
-            user_interaction=UserInteraction(cvss_data["userInteraction"])
-            if cvss_data.get("userInteraction")
-            else None,
-            scope=Scope(cvss_data["scope"]) if cvss_data.get("scope") else None,
-            confidentiality_impact=Impact(cvss_data["confidentialityImpact"])
-            if cvss_data.get("confidentialityImpact")
-            else None,
-            integrity_impact=Impact(cvss_data["integrityImpact"])
-            if cvss_data.get("integrityImpact")
-            else None,
-            availability_impact=Impact(cvss_data["availabilityImpact"])
-            if cvss_data.get("availabilityImpact")
-            else None,
+            base_severity=_parse_severity(cvss_data.get("baseSeverity")),
+            attack_vector=_optional_enum(AttackVector, cvss_data.get("attackVector")),
+            attack_complexity=_optional_enum(AttackComplexity, cvss_data.get("attackComplexity")),
+            privileges_required=_optional_enum(
+                PrivilegesRequired, cvss_data.get("privilegesRequired")
+            ),
+            user_interaction=_optional_enum(UserInteraction, cvss_data.get("userInteraction")),
+            scope=_optional_enum(Scope, cvss_data.get("scope")),
+            confidentiality_impact=_optional_enum(Impact, cvss_data.get("confidentialityImpact")),
+            integrity_impact=_optional_enum(Impact, cvss_data.get("integrityImpact")),
+            availability_impact=_optional_enum(Impact, cvss_data.get("availabilityImpact")),
+            exploitability_score=exploitability_score,
+            impact_score=impact_score,
+        )
+
+    @classmethod
+    def from_v4_data(cls, cvss_data: dict[str, Any]) -> "CVSSMetrics":
+        """Create CVSSMetrics from a CVSS v4.0 object (NVD or CVE JSON 5.x)."""
+        return cls(
+            version=CVSSVersion.V40,
+            vector_string=cvss_data.get("vectorString", ""),
+            base_score=cvss_data.get("baseScore", 0.0),
+            base_severity=_parse_severity(cvss_data.get("baseSeverity")),
+        )
+
+    @classmethod
+    def from_nvd_v3(cls, data: dict[str, Any]) -> "CVSSMetrics":
+        """Create CVSSMetrics from NVD API v3.x CVSS data."""
+        return cls.from_v3_data(
+            data.get("cvssData", data),
             exploitability_score=data.get("exploitabilityScore"),
             impact_score=data.get("impactScore"),
         )
+
+
+def _optional_enum(enum_cls: type[_E], value: str | None) -> _E | None:
+    """Convert a value to an enum member, treating empty values as missing."""
+    return enum_cls(value) if value else None
+
+
+def _parse_severity(value: str | None) -> Severity:
+    """Parse a CVSS severity, falling back to NONE for missing or unknown values."""
+    severity = str(value or "NONE").upper()
+    return Severity(severity) if severity in Severity.__members__ else Severity.NONE
 
 
 class Weakness(BaseModel):
@@ -145,10 +175,19 @@ class Weakness(BaseModel):
     @field_validator("cwe_id", mode="before")
     @classmethod
     def normalize_cwe_id(cls, v: str) -> str:
-        """Normalize CWE ID format."""
-        if v and not v.upper().startswith("CWE-"):
-            return f"CWE-{v}"
-        return v.upper() if v else "CWE-UNKNOWN"
+        """Normalize CWE ID format.
+
+        NVD placeholders such as ``NVD-CWE-Other`` and ``NVD-CWE-noinfo`` are
+        kept as-is rather than being turned into ``CWE-NVD-CWE-Other``.
+        """
+        value = (v or "").strip()
+        if not value:
+            return "CWE-UNKNOWN"
+        if value.upper().startswith("NVD-CWE-"):
+            return value
+        if value.upper().startswith("CWE-"):
+            return value.upper()
+        return f"CWE-{value}"
 
 
 class Reference(BaseModel):
@@ -224,18 +263,23 @@ class CVE(BaseModel):
         return self.cvss_v4 or self.cvss_v3 or self.cvss_v2
 
     @property
-    def base_score(self) -> float:
-        """Get the primary CVSS base score."""
+    def base_score(self) -> float | None:
+        """Get the primary CVSS base score, or None if the CVE is unscored."""
         if cvss := self.primary_cvss:
             return cvss.base_score
-        return 0.0
+        return None
 
     @property
-    def severity(self) -> str:
-        """Get the primary CVSS severity."""
+    def severity(self) -> str | None:
+        """Get the primary CVSS severity, or None if the CVE is unscored."""
         if cvss := self.primary_cvss:
             return cvss.base_severity.value
-        return "NONE"
+        return None
+
+    @property
+    def is_rejected(self) -> bool:
+        """Whether the CVE has been rejected and should not be indexed."""
+        return self.vuln_status.upper() == "REJECTED"
 
     @property
     def primary_cwe(self) -> str:
@@ -289,13 +333,7 @@ class CVE(BaseModel):
     def _extract_cvss_v4(metrics: dict[str, Any]) -> "CVSSMetrics | None":
         """Extract CVSS v4.0 metrics from NVD data."""
         for v4_data in metrics.get("cvssMetricV40", []):
-            cvss_data = v4_data.get("cvssData", {})
-            return CVSSMetrics(
-                version=CVSSVersion.V40,
-                vector_string=cvss_data.get("vectorString", ""),
-                base_score=cvss_data.get("baseScore", 0.0),
-                base_severity=Severity(cvss_data.get("baseSeverity", "NONE")),
-            )
+            return CVSSMetrics.from_v4_data(v4_data.get("cvssData", {}))
         return None
 
     @staticmethod
@@ -455,54 +493,16 @@ class CVE(BaseModel):
         Returns:
             CVSSMetrics if found, None otherwise.
         """
+        # Some records use a generic cvssV3 key that carries its own version
+        v3_keys: tuple[tuple[str, str | None], ...] = (
+            ("cvssV3_1", "3.1"),
+            ("cvssV3_0", "3.0"),
+            ("cvssV3", None),
+        )
         for metric in container.get("metrics", []):
-            cvss_data = None
-            version = "3.1"
-
-            if "cvssV3_1" in metric:
-                cvss_data = metric["cvssV3_1"]
-                version = "3.1"
-            elif "cvssV3_0" in metric:
-                cvss_data = metric["cvssV3_0"]
-                version = "3.0"
-            elif "cvssV3" in metric:
-                # Some records use generic cvssV3 key
-                cvss_data = metric["cvssV3"]
-                version = cvss_data.get("version", "3.1")
-
-            if cvss_data:
-                base_severity = cvss_data.get("baseSeverity", "NONE").upper()
-                if base_severity not in ["NONE", "LOW", "MEDIUM", "HIGH", "CRITICAL"]:
-                    base_severity = "NONE"
-
-                return CVSSMetrics(
-                    version=CVSSVersion(version),
-                    vector_string=cvss_data.get("vectorString", ""),
-                    base_score=float(cvss_data.get("baseScore", 0.0)),
-                    base_severity=Severity(base_severity),
-                    attack_vector=AttackVector(cvss_data["attackVector"])
-                    if cvss_data.get("attackVector")
-                    else None,
-                    attack_complexity=AttackComplexity(cvss_data["attackComplexity"])
-                    if cvss_data.get("attackComplexity")
-                    else None,
-                    privileges_required=PrivilegesRequired(cvss_data["privilegesRequired"])
-                    if cvss_data.get("privilegesRequired")
-                    else None,
-                    user_interaction=UserInteraction(cvss_data["userInteraction"])
-                    if cvss_data.get("userInteraction")
-                    else None,
-                    scope=Scope(cvss_data["scope"]) if cvss_data.get("scope") else None,
-                    confidentiality_impact=Impact(cvss_data["confidentialityImpact"])
-                    if cvss_data.get("confidentialityImpact")
-                    else None,
-                    integrity_impact=Impact(cvss_data["integrityImpact"])
-                    if cvss_data.get("integrityImpact")
-                    else None,
-                    availability_impact=Impact(cvss_data["availabilityImpact"])
-                    if cvss_data.get("availabilityImpact")
-                    else None,
-                )
+            for key, version in v3_keys:
+                if cvss_data := metric.get(key):
+                    return CVSSMetrics.from_v3_data(cvss_data, version=version)
         return None
 
     @staticmethod
@@ -516,18 +516,8 @@ class CVE(BaseModel):
             CVSSMetrics if found, None otherwise.
         """
         for metric in container.get("metrics", []):
-            if "cvssV4_0" in metric:
-                cvss_data = metric["cvssV4_0"]
-                base_severity = cvss_data.get("baseSeverity", "NONE").upper()
-                if base_severity not in ["NONE", "LOW", "MEDIUM", "HIGH", "CRITICAL"]:
-                    base_severity = "NONE"
-
-                return CVSSMetrics(
-                    version=CVSSVersion.V40,
-                    vector_string=cvss_data.get("vectorString", ""),
-                    base_score=float(cvss_data.get("baseScore", 0.0)),
-                    base_severity=Severity(base_severity),
-                )
+            if cvss_data := metric.get("cvssV4_0"):
+                return CVSSMetrics.from_v4_data(cvss_data)
         return None
 
     @staticmethod

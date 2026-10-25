@@ -103,3 +103,13 @@ class TestKEVCatalog:
         assert sample_cve.is_kev is True
         assert sample_cve.kev_ransomware_use is True
         assert sample_cve.kev_date_added is not None
+
+    def test_es_fields_match_indexed_document(self, sample_cve, sample_kev_response):
+        """Partial updates write the same values as a full index of the CVE."""
+        catalog = KEVCatalog.from_api(sample_kev_response)
+        catalog.enrich_cve(sample_cve)
+        doc = sample_cve.to_elasticsearch_doc()
+
+        fields = catalog.entries[sample_cve.cve_id].to_es_fields()
+
+        assert fields == {key: doc[key] for key in fields}

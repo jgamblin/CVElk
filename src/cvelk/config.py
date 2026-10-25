@@ -11,8 +11,24 @@ from typing import Literal
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+ENV_FILE = ".env"
 
-class ElasticsearchSettings(BaseSettings):
+
+class _SectionSettings(BaseSettings):
+    """Base for settings sections that read prefixed variables like ``KIBANA_HOST``.
+
+    Each section loads the ``.env`` file itself, so prefixed variables work there
+    as well as in the process environment.
+    """
+
+    model_config = SettingsConfigDict(
+        env_file=ENV_FILE,
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+
+class ElasticsearchSettings(_SectionSettings):
     """Elasticsearch connection settings."""
 
     model_config = SettingsConfigDict(env_prefix="ELASTICSEARCH_")
@@ -65,7 +81,7 @@ class ElasticsearchSettings(BaseSettings):
         return self.api_key_id is not None and self.api_key is not None
 
 
-class KibanaSettings(BaseSettings):
+class KibanaSettings(_SectionSettings):
     """Kibana connection settings."""
 
     model_config = SettingsConfigDict(env_prefix="KIBANA_")
@@ -88,7 +104,7 @@ class KibanaSettings(BaseSettings):
     )
 
 
-class NVDSettings(BaseSettings):
+class NVDSettings(_SectionSettings):
     """NVD API settings."""
 
     model_config = SettingsConfigDict(env_prefix="NVD_")
@@ -128,7 +144,7 @@ class NVDSettings(BaseSettings):
         return self.rate_limit
 
 
-class EPSSSettings(BaseSettings):
+class EPSSSettings(_SectionSettings):
     """EPSS data settings."""
 
     model_config = SettingsConfigDict(env_prefix="EPSS_")
@@ -145,7 +161,7 @@ class EPSSSettings(BaseSettings):
     )
 
 
-class KEVSettings(BaseSettings):
+class KEVSettings(_SectionSettings):
     """CISA KEV catalog settings."""
 
     model_config = SettingsConfigDict(env_prefix="KEV_")
@@ -162,7 +178,7 @@ class KEVSettings(BaseSettings):
     )
 
 
-class CVEListV5Settings(BaseSettings):
+class CVEListV5Settings(_SectionSettings):
     """CVE List V5 repository settings."""
 
     model_config = SettingsConfigDict(env_prefix="CVE_LIST_V5_")
@@ -194,12 +210,13 @@ class CVEListV5Settings(BaseSettings):
 class Settings(BaseSettings):
     """Main application settings.
 
-    All settings can be configured via environment variables.
-    Nested settings use double underscores, e.g., ELASTICSEARCH__HOST.
+    All settings can be configured via environment variables or a ``.env`` file,
+    using either the section prefix (``ELASTICSEARCH_HOST``) or the nested
+    delimiter (``ELASTICSEARCH__HOST``).
     """
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=ENV_FILE,
         env_file_encoding="utf-8",
         env_nested_delimiter="__",
         case_sensitive=False,

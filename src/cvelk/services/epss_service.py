@@ -10,7 +10,7 @@ import contextlib
 import csv
 import gzip
 import io
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
 from loguru import logger
@@ -101,17 +101,15 @@ class EPSSService:
 
             # Parse header comment (first line starting with #)
             if row[0].startswith("#"):
-                # Extract model version and date from comment
-                # Format: # model_version:v2023.03.01,score_date:2024-01-15
-                header = row[0].lstrip("# ")
-                for part in header.split(","):
-                    if ":" in part:
-                        key, value = part.split(":", 1)
-                        if key == "model_version":
-                            model_version = value
-                        elif key == "score_date":
-                            with contextlib.suppress(ValueError):
-                                score_date = date.fromisoformat(value)
+                # Format: #model_version:v2025.03.14,score_date:2026-10-24T12:03:08Z
+                # The csv reader has already split the comment on commas.
+                for part in row:
+                    key, _, value = part.lstrip("# ").partition(":")
+                    if key == "model_version":
+                        model_version = value
+                    elif key == "score_date":
+                        with contextlib.suppress(ValueError):
+                            score_date = datetime.fromisoformat(value).date()
                 continue
 
             # Skip header row

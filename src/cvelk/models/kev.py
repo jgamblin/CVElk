@@ -53,6 +53,15 @@ class KEVEntry(BaseModel):
             return v.lower() == "known"
         return False
 
+    def to_es_fields(self) -> dict[str, Any]:
+        """Elasticsearch document fields for this entry, matching CVE.to_elasticsearch_doc."""
+        return {
+            "isKev": True,
+            "kevDateAdded": datetime.combine(self.date_added, datetime.min.time()).isoformat(),
+            "kevDueDate": datetime.combine(self.due_date, datetime.min.time()).isoformat(),
+            "kevRansomwareUse": self.known_ransomware_campaign_use,
+        }
+
     @classmethod
     def from_api(cls, data: dict[str, Any]) -> "KEVEntry":
         """Create KEVEntry from CISA API response data.

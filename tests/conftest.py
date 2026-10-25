@@ -8,6 +8,12 @@ from cvelk.config import Settings
 from cvelk.models.cve import CVE, CVSSMetrics, CVSSVersion, Severity, Weakness
 
 
+@pytest.fixture(autouse=True)
+def _isolated_working_dir(tmp_path_factory, monkeypatch):
+    """Run each test from an empty directory so a developer's .env is never loaded."""
+    monkeypatch.chdir(tmp_path_factory.mktemp("cwd"))
+
+
 @pytest.fixture
 def sample_nvd_cve_response():
     """Sample NVD 2.0 API CVE response."""

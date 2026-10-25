@@ -17,6 +17,7 @@ from loguru import logger
 
 from cvelk.config import Settings
 from cvelk.models.cve import CVE
+from cvelk.utils.sync_state import SyncState
 
 
 class CVEListV5Service:
@@ -41,7 +42,7 @@ class CVEListV5Service:
         self.repo_url = settings.cve_list_v5.repo_url
         self.use_shallow = settings.cve_list_v5.use_shallow_clone
         self.years_filter = settings.cve_list_v5.years
-        self.state_path = settings.data_dir / "cvelist-v5-sync.json"
+        self.state = SyncState(settings.data_dir / "cvelist-v5-sync.json")
 
     def clone_or_update(self) -> bool:
         """Clone the CVE List V5 repository or update if it exists.
@@ -171,10 +172,34 @@ class CVEListV5Service:
                 yield from sorted(range_dir.glob("CVE-*.json"))
 
     def _changed_cve_files(self) -> list[Path] | None:
-        """Return CVE files changed since the last successful sync.
+        """Return CVE files added or modified since the last successful sync.
 
         Returns ``None`` when no usable checkpoint exists, which tells callers
         to fall back to a complete scan.
+        """
+        names = self._diff_since_checkpoint("d")
+        if names is None:
+            return None
+
+        changed_files = [
+            self.repo_path / name for name in names if (self.repo_path / name).exists()
+        ]
+        return sorted(changed_files)
+
+    def removed_cve_ids(self) -> list[str]:
+        """Return IDs of CVE records deleted from the repository since the last sync."""
+        names = self._diff_since_checkpoint("D") or []
+        return sorted(Path(name).stem for name in names)
+
+    def _diff_since_checkpoint(self, diff_filter: str) -> list[str] | None:
+        """List CVE JSON files changed since the checkpoint, honoring the years filter.
+
+        Args:
+            diff_filter: ``git diff --diff-filter`` value, e.g. ``"D"`` for deleted
+                files or ``"d"`` for everything except deletions.
+
+        Returns:
+            Repository-relative paths, or ``None`` when there is no usable checkpoint.
         """
         previous_commit = self.load_sync_commit()
         if not previous_commit:
@@ -182,7 +207,16 @@ class CVEListV5Service:
 
         try:
             result = subprocess.run(
-                ["git", "diff", "--name-only", previous_commit, "HEAD", "--", "cves"],
+                [
+                    "git",
+                    "diff",
+                    "--name-only",
+                    f"--diff-filter={diff_filter}",
+                    previous_commit,
+                    "HEAD",
+                    "--",
+                    "cves",
+                ],
                 cwd=self.repo_path,
                 capture_output=True,
                 text=True,
@@ -192,20 +226,19 @@ class CVEListV5Service:
             logger.warning(f"Unable to calculate changed CVE files: {e}")
             return None
 
-        changed_files: list[Path] = []
+        names: list[str] = []
         for name in result.stdout.splitlines():
-            path = self.repo_path / name
-            if path.suffix != ".json" or not path.exists():
+            parts = Path(name).parts
+            if not name.endswith(".json") or not Path(name).name.startswith("CVE-"):
                 continue
-            parts = path.relative_to(self.repo_path).parts
-            if len(parts) >= 2 and self.years_filter:
+            if self.years_filter:
                 try:
                     if int(parts[1]) not in self.years_filter:
                         continue
-                except ValueError:
+                except (IndexError, ValueError):
                     continue
-            changed_files.append(path)
-        return sorted(changed_files)
+            names.append(name)
+        return names
 
     def current_commit(self) -> str | None:
         """Return the current repository commit hash."""
@@ -223,25 +256,14 @@ class CVEListV5Service:
 
     def load_sync_commit(self) -> str | None:
         """Load the commit recorded by the last successful sync."""
-        try:
-            data = json.loads(self.state_path.read_text())
-        except (FileNotFoundError, json.JSONDecodeError, OSError):
-            return None
-        commit = data.get("commit")
-        return commit if isinstance(commit, str) else None
+        return self.state.get("commit")
 
     def save_sync_commit(self) -> bool:
         """Record the current repository commit after a successful sync."""
         commit = self.current_commit()
         if not commit:
             return False
-        try:
-            self.state_path.parent.mkdir(parents=True, exist_ok=True)
-            self.state_path.write_text(json.dumps({"commit": commit}) + "\n")
-        except OSError as e:
-            logger.warning(f"Unable to save sync checkpoint: {e}")
-            return False
-        return True
+        return self.state.set("commit", commit)
 
     def count_cves(self) -> int:
         """Count total CVE files in the repository.
@@ -348,255 +370,3 @@ class CVEListV5Service:
         except Exception:
             pass
         return {}
-
-
-def parse_cve_v5_record(data: dict[str, Any]) -> dict[str, Any]:
-    """Parse a CVE JSON 5.x record into a normalized format.
-
-    This function extracts and merges data from CNA and ADP containers.
-
-    Args:
-        data: Raw CVE JSON 5.x record.
-
-    Returns:
-        Normalized CVE data dictionary.
-    """
-    result: dict[str, Any] = {
-        "cve_id": "",
-        "state": "",
-        "date_reserved": None,
-        "date_published": None,
-        "date_updated": None,
-        "description": "",
-        "cvss_v3": None,
-        "cvss_v4": None,
-        "cwes": [],
-        "cpes": [],
-        "references": [],
-        "affected": [],
-        "ssvc": None,
-        "source": "CVE_V5",
-    }
-
-    # Extract metadata
-    metadata = data.get("cveMetadata", {})
-    result["cve_id"] = metadata.get("cveId", "")
-    result["state"] = metadata.get("state", "")
-    result["assigner_org_id"] = metadata.get("assignerOrgId", "")
-    result["assigner_short_name"] = metadata.get("assignerShortName", "")
-    result["date_reserved"] = metadata.get("dateReserved")
-    result["date_published"] = metadata.get("datePublished")
-    result["date_updated"] = metadata.get("dateUpdated")
-
-    # Skip rejected/reserved CVEs
-    if result["state"] != "PUBLISHED":
-        return result
-
-    containers = data.get("containers", {})
-
-    # Parse CNA container (primary CVE data from CVE Numbering Authority)
-    cna = containers.get("cna", {})
-    if cna:
-        _parse_cna_container(cna, result)
-
-    # Parse ADP containers (enrichment from Authorized Data Publishers)
-    adp_list = containers.get("adp", [])
-    for adp in adp_list:
-        _parse_adp_container(adp, result)
-
-    return result
-
-
-def _parse_cna_container(cna: dict[str, Any], result: dict[str, Any]) -> None:  # noqa: PLR0912
-    """Parse CNA (CVE Numbering Authority) container.
-
-    Args:
-        cna: CNA container data.
-        result: Result dictionary to update.
-    """
-    # Extract description
-    for desc in cna.get("descriptions", []):
-        if desc.get("lang", "").startswith("en"):
-            result["description"] = desc.get("value", "")
-            break
-    if not result["description"]:
-        descriptions = cna.get("descriptions", [])
-        if descriptions:
-            result["description"] = descriptions[0].get("value", "")
-
-    # Extract CVSS metrics
-    for metric in cna.get("metrics", []):
-        if "cvssV3_1" in metric:
-            result["cvss_v3"] = _parse_cvss_v3(metric["cvssV3_1"])
-        elif "cvssV3_0" in metric:
-            result["cvss_v3"] = _parse_cvss_v3(metric["cvssV3_0"])
-        elif "cvssV4_0" in metric:
-            result["cvss_v4"] = _parse_cvss_v4(metric["cvssV4_0"])
-
-    # Extract problem types (CWEs)
-    for pt in cna.get("problemTypes", []):
-        for desc in pt.get("descriptions", []):
-            cwe_id = desc.get("cweId")
-            if cwe_id:
-                result["cwes"].append(
-                    {
-                        "cwe_id": cwe_id,
-                        "description": desc.get("description", ""),
-                    }
-                )
-
-    # Extract references
-    for ref in cna.get("references", []):
-        result["references"].append(
-            {
-                "url": ref.get("url", ""),
-                "tags": ref.get("tags", []),
-            }
-        )
-
-    # Extract affected products
-    for affected in cna.get("affected", []):
-        result["affected"].append(
-            {
-                "vendor": affected.get("vendor", ""),
-                "product": affected.get("product", ""),
-                "versions": affected.get("versions", []),
-                "cpes": affected.get("cpes", []),
-            }
-        )
-
-
-def _parse_adp_container(adp: dict[str, Any], result: dict[str, Any]) -> None:  # noqa: PLR0912
-    """Parse ADP (Authorized Data Publisher) container.
-
-    Handles CISA-ADP (with SSVC, vulnrichment) and CVE Program Container.
-
-    Args:
-        adp: ADP container data.
-        result: Result dictionary to update.
-    """
-    provider = adp.get("providerMetadata", {})
-    short_name = provider.get("shortName", "")
-
-    if short_name == "CISA-ADP":
-        _parse_cisa_adp(adp, result)
-    elif short_name == "CVE":
-        _parse_cve_program_container(adp, result)
-
-    # Extract additional references
-    for ref in adp.get("references", []):
-        url = ref.get("url", "")
-        if url and not any(r["url"] == url for r in result["references"]):
-            result["references"].append(
-                {
-                    "url": url,
-                    "tags": ref.get("tags", []),
-                }
-            )
-
-    # Extract additional CPEs
-    for affected in adp.get("affected", []):
-        for cpe in affected.get("cpes", []):
-            if cpe not in result["cpes"]:
-                result["cpes"].append(cpe)
-
-    # Extract CWEs from ADP
-    for pt in adp.get("problemTypes", []):
-        for desc in pt.get("descriptions", []):
-            cwe_id = desc.get("cweId")
-            if cwe_id and not any(c["cwe_id"] == cwe_id for c in result["cwes"]):
-                result["cwes"].append(
-                    {
-                        "cwe_id": cwe_id,
-                        "description": desc.get("description", ""),
-                    }
-                )
-
-    # Extract CVSS from ADP if not already set
-    for metric in adp.get("metrics", []):
-        if not result["cvss_v3"]:
-            if "cvssV3_1" in metric:
-                result["cvss_v3"] = _parse_cvss_v3(metric["cvssV3_1"])
-            elif "cvssV3_0" in metric:
-                result["cvss_v3"] = _parse_cvss_v3(metric["cvssV3_0"])
-
-
-def _parse_cisa_adp(adp: dict[str, Any], result: dict[str, Any]) -> None:
-    """Parse CISA-ADP container with SSVC and vulnrichment data.
-
-    Args:
-        adp: CISA-ADP container data.
-        result: Result dictionary to update.
-    """
-    for metric in adp.get("metrics", []):
-        other = metric.get("other", {})
-        if other.get("type") == "ssvc":
-            content = other.get("content", {})
-            result["ssvc"] = {
-                "version": content.get("version", ""),
-                "timestamp": content.get("timestamp", ""),
-                "role": content.get("role", ""),
-                "options": content.get("options", []),
-            }
-            # Extract SSVC decision values
-            for opt in content.get("options", []):
-                if "Exploitation" in opt:
-                    result["ssvc"]["exploitation"] = opt["Exploitation"]
-                elif "Automatable" in opt:
-                    result["ssvc"]["automatable"] = opt["Automatable"]
-                elif "Technical Impact" in opt:
-                    result["ssvc"]["technical_impact"] = opt["Technical Impact"]
-
-
-def _parse_cve_program_container(adp: dict[str, Any], result: dict[str, Any]) -> None:
-    """Parse CVE Program Container.
-
-    Args:
-        adp: CVE Program Container data.
-        result: Result dictionary to update.
-    """
-    # This container mainly contains transferred references
-    # Already handled by the generic ADP parsing
-    pass
-
-
-def _parse_cvss_v3(cvss: dict[str, Any]) -> dict[str, Any]:
-    """Parse CVSS v3.x data from CVE JSON 5.x format.
-
-    Args:
-        cvss: CVSS v3.x data.
-
-    Returns:
-        Normalized CVSS v3.x dictionary.
-    """
-    return {
-        "version": cvss.get("version", "3.1"),
-        "vector_string": cvss.get("vectorString", ""),
-        "base_score": cvss.get("baseScore", 0.0),
-        "base_severity": cvss.get("baseSeverity", "NONE"),
-        "attack_vector": cvss.get("attackVector"),
-        "attack_complexity": cvss.get("attackComplexity"),
-        "privileges_required": cvss.get("privilegesRequired"),
-        "user_interaction": cvss.get("userInteraction"),
-        "scope": cvss.get("scope"),
-        "confidentiality_impact": cvss.get("confidentialityImpact"),
-        "integrity_impact": cvss.get("integrityImpact"),
-        "availability_impact": cvss.get("availabilityImpact"),
-    }
-
-
-def _parse_cvss_v4(cvss: dict[str, Any]) -> dict[str, Any]:
-    """Parse CVSS v4.0 data from CVE JSON 5.x format.
-
-    Args:
-        cvss: CVSS v4.0 data.
-
-    Returns:
-        Normalized CVSS v4.0 dictionary.
-    """
-    return {
-        "version": "4.0",
-        "vector_string": cvss.get("vectorString", ""),
-        "base_score": cvss.get("baseScore", 0.0),
-        "base_severity": cvss.get("baseSeverity", "NONE"),
-    }
