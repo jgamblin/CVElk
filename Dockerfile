@@ -1,5 +1,5 @@
 # Build stage
-FROM python:3.14-slim AS builder
+FROM python:3.15-slim AS builder
 
 WORKDIR /app
 
@@ -17,7 +17,7 @@ COPY src/ ./src/
 RUN hatch build -t wheel
 
 # Runtime stage
-FROM python:3.14-slim
+FROM python:3.15-slim
 
 ENV PIP_ROOT_USER_ACTION=ignore
 
